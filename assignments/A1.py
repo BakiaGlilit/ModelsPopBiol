@@ -86,26 +86,31 @@ def _(mo):
 
 @app.cell
 def _():
-    def ode(t, x): ###
-        n1, n2, g, a = x
 
-        dn1dt = (
-            # write code here
-        )
-        dn2dt = (
-            # write code here
-        )
-        dgdt = (
-            # write code here
-        )
-        dadt = (
-            # write code here
-        )
+    def ode(t, x, 
+        r = [1, 2.68, 7, 1],
+        k = [50, 50, 50, 50],
+        y=[1, 1, 1, 1],
+        h=[1, 1]): ###
+        n1, n2, g, a = x
+    
+        r11, r12, r21, r22 = r
+        k11, k12, k21, k22 = k
+        y11, y12, y21, y22 = y
+        h1, h2 = h
+
+        dn1dt = ((r11 * g / (k11 + g)) + (r21 * a / (k21 + a))) * n1
+        dn2dt = ((r12 * g / (k12 + g)) + (r22 * a / (k22 + a))) * n2
+
+        dgdt = -((1 / y11) * (r11 * g / (k11 + g)) * n1 + (1 / y12) * (r12 * g / (k12 + g)) * n2)
+
+        dadt = ((h1 * (r11 * g / (k11 + g)) - (1 / y21) * (r21 * a / (k21 + a))) * n1 + 
+        (h2 * (r12 * g / (k12 + g)) - (1 / y22) * (r22 * a / (k22 + a))) * n2)
 
         return [dn1dt, dn2dt, dgdt, dadt] ###
 
     ode_crossfeed = ode
-    return ode, ode_crossfeed
+    return (ode,)
 
 
 @app.cell(hide_code=True)
@@ -120,19 +125,75 @@ def _(mo):
 
 
 @app.cell
-def _(init, ode_crossfeed, solve_ivp, t):
-    r11 = 1
+def _(np, ode, partial, solve_ivp):
+    r11 = 1.0
+    r = [r11, 2.68, 7, 1]
+    k = [50, 50, 50, 50]
+    y=[1, 1, 1, 1]
+    h=[1, 1]
 
-    sol = solve_ivp(ode_crossfeed, (t.min(), t.max()), init, t_eval=t) #
+    t = np.linspace(0, 10, 1000)
+    init_n1, init_n2 = 0.1, 0.1
+    init_a = 0
+    init = [init_n1, init_n2, 100, init_a] # [n1, n2, g, a]
+    ode_crossfeed_partial = partial(ode, r=r, k=k, y=y, h=h)
+
+    sol = solve_ivp(ode_crossfeed_partial, (t.min(), t.max()), init, t_eval=t) #
+    return (sol,)
+
+
+@app.cell
+def _(plt, sns, sol):
+    red, blue, green, purple, orange  = sns.color_palette('Set1', 5) ###
+    red, blue, green, purple, orange = sns.color_palette('Set1', 5) ###
+    fig, ax = plt.subplots() ###
+
+    # glucose specialist (blue)
+    ax.plot(sol.t, sol.y[0], color=blue, label='glucose specialist')
+
+    # acetate specialist (red)
+    ax.plot(sol.t, sol.y[1], color=red, label='acetate specialist')
+
+    # glucose resource (orange)
+    ax.plot(sol.t, sol.y[2], color=orange, label='glucose')
+
+    # acetate resource (green)
+    ax.plot(sol.t, sol.y[3], color=green, label='acetate')
+
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Concentration')
+    ax.legend()
+
+    sns.despine()
+
+    fig
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    comparing to fig 3A from the paper, the behaviur of the red and blue lines is diffrent (not only swapped).
+    we get concentration of 120 in the glucose specialist ecotype, which is not posssible.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ![alt text](3A.png)
+    """)
     return
 
 
 @app.cell
-def _(plt, sns):
-    red, blue, green, purple, orange  = sns.color_palette('Set1', 5) ###
-    fig, ax = plt.subplots() ###
+def _():
+    return
 
-    # write code here
+
+@app.cell
+def _():
     return
 
 
