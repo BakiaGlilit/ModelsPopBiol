@@ -264,19 +264,96 @@ def _(mo):
 def _(growth_cycles, n_1_init, n_2_init, np, plt, sns):
     p0 = n_2_init / (n_1_init + n_2_init) #use the parameters from the previous simulation to set p0
 
-    p = growth_cycles(p0=0.01, ncycles=11,F=100)
+    result_ = growth_cycles(p0=p0, ncycles=11,F=100)
     fig1, ax1 = plt.subplots()
 
-    cycles = np.arange(len(p))
+    cycles = np.arange(len(result_))
 
-    ax1.plot(cycles, p, '-ok')
+    ax1.plot(cycles, result_, '-ok')
     
     ax1.set_xlabel('Number of growth cycles')
-    ax1.set_ylabel(r'Relative frequency $p$')
+    ax1.set_ylabel(r'Relative frequency ')
 
     sns.despine()
 
     fig1
+    return (p0,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ![alt text](3B.png)
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    this graph seem similar to the graph in 3(B), but the points seem to have the comlementry frequency values comparing to the paper graph.
+    this may caused by the same inconsistency discussed in Figure 3(A): the parameter values make one strain behave like the glucose specialist, while the paper labels suggest the opposite. therefore we will try to look at the complementary frequency 1−p.
+    """)
+    return
+
+
+@app.cell
+def _(np, ode_crossfeed, solve_ivp):
+
+    def growth_cycles_swapped(p0, ncycles, F):
+
+        N0 = 0.2 # initial total population
+        n2 = N0 * p0 # initial strains
+        n1 = N0 * (1 - p0)
+
+        g0 = 100 # initial resources
+        a0 = 0
+        t = np.linspace(0, 4, 500) # time for one growth cycle
+
+        p = np.empty(ncycles) # store frequencies
+
+        for i in range(ncycles):
+            init = [n1, n2, g0, a0]
+            sol = solve_ivp(
+                ode_crossfeed,
+                (t.min(), t.max()),
+                init,
+                t_eval=t,
+                rtol=1e-8,
+                atol=1e-10
+            )
+            n1_end = sol.y[0, -1] 
+            n2_end = sol.y[1, -1]
+
+            p[i] = 1- n2_end / (n1_end + n2_end) # frequency of strain 2
+            n1 = n1_end / F # dilution into fresh media
+            n2 = n2_end / F
+
+            g0 = 100 #reset resources for next cycle
+            a0 = 0
+
+        return p
+
+    return (growth_cycles_swapped,)
+
+
+@app.cell
+def _(growth_cycles_swapped, np, p0, plt, sns):
+    p0_swapped = p0 #use the parameters from the previous simulation to set p0
+
+    result_swapped = growth_cycles_swapped(p0=p0_swapped, ncycles=11,F=100)
+    fig2, ax2 = plt.subplots()
+
+    cycles_swapped = np.arange(len(result_swapped))
+
+    ax2.plot(cycles_swapped, result_swapped, '-ok')
+    
+    ax2.set_xlabel('Number of growth cycles')
+    ax2.set_ylabel(r'Relative frequency ')
+
+    sns.despine()
+
+    fig2
     return
 
 
@@ -293,7 +370,9 @@ def _(mo):
 
     This gives the following euqations:
     $
-    \frac{dC}{dt} = -\delta_1 C - \beta C $
+    \frac{dC}{dt} = -\delta_1 C - \beta C
+    $
+
     $
     \frac{dI}{dt} = \beta C - \delta_2 I + \rho I
     $
@@ -307,19 +386,49 @@ def _(mo):
 
 @app.function
 def ode2(t, x, δ1, δ2, β, ρ): ###
-    # write code here
-    return
+    C, I = x
+    dCdt = -δ1 * C - β * C
+    dIdt = β * C - δ2 * I + ρ * I
+    return [dCdt, dIdt]
 
 
 @app.cell
-def _(partial):
+def _(np, partial, plt, solve_ivp):
     δ1, δ2, β, ρ = 0.5, 0.5, 0.8, 0.4 ###
-    ode1 = partial(ode2, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
+    ode2_par1 = partial(ode2, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
     δ1, δ2, β, ρ = 0.5, 0.5, 0.8, 0.6 ###
-    ode3 = partial(ode2, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
+    ode2_par2 = partial(ode2, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
 
-    # write code here
-    return δ2, ρ
+    t_2 = np.linspace(0, 20, 1000)
+
+    x0 = [10, 0]   # initial [C, I]
+
+    sol1 = solve_ivp(ode2_par1, (t_2.min(), t_2.max()), x0, t_eval=t_2)
+    sol2 = solve_ivp(ode2_par2, (t_2.min(), t_2.max()), x0, t_eval=t_2)
+
+    fig3, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # first parameter set
+    axes[0].plot(sol1.t, sol1.y[0], label='capillaries of an organ: C')
+    axes[0].plot(sol1.t, sol1.y[1], label='inside organ: I')
+    axes[0].set_title(r'$\rho = 0.4$')
+    axes[0].set_xlabel('Time')
+    axes[0].set_ylabel('Population')
+    axes[0].legend()
+
+    # second parameter set
+    axes[1].plot(sol2.t, sol2.y[0], label='C')
+    axes[1].plot(sol2.t, sol2.y[1], label='I')
+    axes[1].set_title(r'$\rho = 0.6$')
+    axes[1].set_xlabel('Time')
+    axes[1].set_ylabel('Population')
+    axes[1].legend()
+
+    plt.tight_layout()
+    fig3.suptitle("Number of cancer cells in capillaries and inside organ over time for different duplication rates (ρ)")
+    fig3.subplots_adjust(top=0.86)
+    plt.show()
+    return
 
 
 @app.cell(hide_code=True)
@@ -340,12 +449,34 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    $
+    \frac{dC}{dt} = -\delta_1 C - \beta C=0 \Rightarrow -C(\beta +\delta_1)=0
+    $
+
+    since all parameters are positive, we get $c^*=0$
+
+    $
+    \frac{dI}{dt} = \beta C - \delta_2 I + \rho I=0 \Rightarrow \beta 0=\delta_2 I -\rho I
+    $
+
+    $
+    I(\delta_2-\rho)=0
+    $
+
+    and again, since all parameters are positive, we get $I^*=0$
+    """)
+    return
+
+
 @app.cell
-def _(np, ode):
-    δ1, δ2, β, ρ = np.random.uniform(0, 1, size=(4, 1000)) ###
-    x_star = None  # write code here
-    np.allclose(ode(0, x_star, δ1, δ2, β, ρ).T, x_star) ###
-    return δ2, ρ
+def _(np):
+    δ1_eq, δ2_eq, β_eq, ρ_eq = np.random.uniform(0, 1, size=(4, 1000)) ###
+    x_star = np.array([0, 0])
+    np.allclose(np.array(ode2(0, x_star, δ1_eq, δ2_eq, β_eq, ρ_eq)).T, x_star) ###
+    return
 
 
 @app.cell(hide_code=True)
@@ -374,7 +505,7 @@ def _():
     ###
     import sympy
     sympy.init_printing()
-    return
+    return (sympy,)
 
 
 @app.cell
@@ -384,6 +515,42 @@ def _():
     # Compute the Jacobian at the equilibrium
     # Find the leading eigenvalue and assign it to λ
     # Also keep δ2 and ρ as sympy symbols for the visualization below
+    return
+
+
+@app.cell
+def _(sympy):
+    C, I = sympy.symbols('C I')
+    # Define sympy symbols for δ1, δ2, β, ρ
+    δ1_symp, δ2_symp, β_symp, ρ_sympy = sympy.symbols('δ1 δ2 β ρ')
+
+    dCdt = -δ1_symp * C - β_symp * C
+    dIdt = β_symp * C - δ2_symp * I + ρ_sympy * I
+    # Compute the Jacobian at the equilibrium
+    J = sympy.Matrix([
+        [sympy.diff(dCdt, C), sympy.diff(dCdt, I)],
+        [sympy.diff(dIdt, C), sympy.diff(dIdt, I)]
+    ])
+
+    J_eq = J.subs([(C, 0), (I, 0)])
+    # Find eigenvalues
+    eigs = J_eq.eigenvals()
+    print(eigs)
+    # Find the leading eigenvalue and assign it to λ
+
+
+    return δ2_symp, ρ_sympy
+
+
+@app.cell
+def _(δ2_symp, ρ_sympy):
+    # using that all parameters are positive: 
+    λ = -δ2_symp + ρ_sympy
+    return (λ,)
+
+
+@app.cell
+def _():
     return
 
 
@@ -400,10 +567,10 @@ def _(mo):
 
 
 @app.cell
-def _(np, δ2, λ, ρ):
+def _(np, δ2_symp, λ, ρ_sympy):
     δ2_ = np.linspace(0, 1, 100)
     ρ_ = np.linspace(0, 1, 100)
-    stability = np.array([[λ.subs([(δ2, δ2_[i]), (ρ, ρ_[j])]) for i in range(100)] for j in range(100)]).astype(float)
+    stability = np.array([[λ.subs([(δ2_symp, δ2_[i]), (ρ_sympy, ρ_[j])]) for i in range(100)] for j in range(100)]).astype(float)
     return stability, δ2_, ρ_
 
 
