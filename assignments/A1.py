@@ -110,7 +110,7 @@ def _():
         return [dn1dt, dn2dt, dgdt, dadt] ###
 
     ode_crossfeed = ode
-    return (ode,)
+    return ode, ode_crossfeed
 
 
 @app.cell(hide_code=True)
@@ -132,49 +132,60 @@ def _(np, ode, partial, solve_ivp):
     y=[1, 1, 1, 1]
     h=[1, 1]
 
-    t = np.linspace(0, 10, 1000)
-    init_n1, init_n2 = 0.1, 0.1
+    t = np.linspace(0, 4, 1000)
     init_a = 0
-    init = [init_n1, init_n2, 100, init_a] # [n1, n2, g, a]
+    n_1_init, n_2_init =0.4, 0.1 
+    init = [n_1_init, n_2_init, 100,0]
     ode_crossfeed_partial = partial(ode, r=r, k=k, y=y, h=h)
 
     sol = solve_ivp(ode_crossfeed_partial, (t.min(), t.max()), init, t_eval=t) #
-    return (sol,)
+    return init_a, n_1_init, n_2_init, sol
 
 
 @app.cell
-def _(plt, sns, sol):
+def _(init_a, n_1_init, n_2_init, plt, sns, sol):
     red, blue, green, purple, orange  = sns.color_palette('Set1', 5) ###
-    red, blue, green, purple, orange = sns.color_palette('Set1', 5) ###
     fig, ax = plt.subplots() ###
+    # acetate specialist (n1)
+    ax.plot(sol.t, sol.y[0], color=red, label='acetate specialist')
 
-    # glucose specialist (blue)
-    ax.plot(sol.t, sol.y[0], color=blue, label='glucose specialist')
+    # glucose specialist (n2)
+    ax.plot(sol.t, sol.y[1], color=blue, label='glucose specialist')
 
-    # acetate specialist (red)
-    ax.plot(sol.t, sol.y[1], color=red, label='acetate specialist')
-
-    # glucose resource (orange)
+    # glucose
     ax.plot(sol.t, sol.y[2], color=orange, label='glucose')
 
-    # acetate resource (green)
+    # acetate
     ax.plot(sol.t, sol.y[3], color=green, label='acetate')
 
     ax.set_xlabel('Time')
     ax.set_ylabel('Concentration')
+
     ax.legend()
+    fig.suptitle('Figure 3A recreation: initial n1={}, initial n2={}, initial a={}'.format(n_1_init, n_2_init, init_a)) ###
 
     sns.despine()
 
     fig
+
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    comparing to fig 3A from the paper, the behaviur of the red and blue lines is diffrent (not only swapped).
-    we get concentration of 120 in the glucose specialist ecotype, which is not posssible.
+    comparing to fig 3A from the paper, the behaviur of the red and blue (acetate & glucose spcecialist respectively) lines is diffrent:
+    * its seems like they swapped
+    * both dont reach plato by t=4. this may be due to diffrent starting condition (n_1, n_2)
+
+    In the paper, the maximum growth rate of type 1 on glucose is $r_{12}=2.68$, and the maximum growth rate of type 2 on glucose is $r_{22}=1$.
+     Respectively, the maximum growth rate of type 1 on acetate is $r_{11}=1$, and the maximum growth rate of type 2 on acetate is $r_{21}=7$.
+
+    since $2.68=r_{12}>r_{21}>1$ and $7=r_{21}>r_{11}>1$, type 1 is the glucose spciealist.
+
+    but in we consider type 1 (sol.y[0]) to be the acetate specialist, hence the lines are swapped.
+
+    ax.plot(sol.t, sol.y[0], color=red, label='acetate specialist')
     """)
     return
 
@@ -184,16 +195,6 @@ def _(mo):
     mo.md(r"""
     ![alt text](3A.png)
     """)
-    return
-
-
-@app.cell
-def _():
-    return
-
-
-@app.cell
-def _():
     return
 
 
@@ -211,15 +212,44 @@ def _(mo):
 
 
 @app.cell
-def _(p):
+def _(np, ode_crossfeed, solve_ivp):
     # Note: use ode_crossfeed (available via closure) for the ODE solver inside growth_cycles
 
     def growth_cycles(p0, ncycles, F): ###
-        # write code here
+
+        N0 = 0.2 # initial total population
+        n2 = N0 * p0 # initial strains
+        n1 = N0 * (1 - p0)
+
+        g0 = 100 # initial resources
+        a0 = 0
+        t = np.linspace(0, 4, 500) # time for one growth cycle
+
+        p = np.empty(ncycles) # store frequencies
+
+        for i in range(ncycles):
+            init = [n1, n2, g0, a0]
+            sol = solve_ivp(
+                ode_crossfeed,
+                (t.min(), t.max()),
+                init,
+                t_eval=t,
+                rtol=1e-8,
+                atol=1e-10
+            )
+            n1_end = sol.y[0, -1]
+            n2_end = sol.y[1, -1]
+
+            p[i] = n2_end / (n1_end + n2_end) # frequency of strain 2
+            n1 = n1_end / F # dilution into fresh media
+            n2 = n2_end / F
+
+            g0 = 100 #reset resources for next cycle
+            a0 = 0
 
         return p ###
 
-    return
+    return (growth_cycles,)
 
 
 @app.cell(hide_code=True)
@@ -231,8 +261,22 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # write code here
+def _(growth_cycles, n_1_init, n_2_init, np, plt, sns):
+    p0 = n_2_init / (n_1_init + n_2_init) #use the parameters from the previous simulation to set p0
+
+    p = growth_cycles(p0=0.01, ncycles=11,F=100)
+    fig1, ax1 = plt.subplots()
+
+    cycles = np.arange(len(p))
+
+    ax1.plot(cycles, p, '-ok')
+    
+    ax1.set_xlabel('Number of growth cycles')
+    ax1.set_ylabel(r'Relative frequency $p$')
+
+    sns.despine()
+
+    fig1
     return
 
 
