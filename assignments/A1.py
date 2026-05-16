@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.8"
+__generated_with = "0.23.6"
 app = marimo.App()
 
 
@@ -12,6 +12,7 @@ def _():
     from scipy.integrate import solve_ivp
     from functools import partial
     import seaborn as sns
+
     return mo, np, partial, plt, sns, solve_ivp
 
 
@@ -56,12 +57,21 @@ def _(mo):
     The concentration of glucose and acetate are denoted by $g$ and $a$, respectively.
 
     The model equations are
-    $$
-    \frac{d}{d t} g(t)=-\sum_{i=1}^{2} \frac{1}{y_{1, i}} \frac{r_{1, i} g(t)}{k_{1, i}+g(t)} n_{i}(t) $$$$
-    \frac{d}{d t} a(t)=\sum_{i=1}^{2}\left[h_{i} \frac{r_{1, i} g(t)}{k_{1, i}+g(t)}-\frac{1}{y_{2, i}} \frac{r_{2, i} a(t)}{k_{2, i}+a(t)}\right] n_{i}(t) $$$$
-    \frac{d}{d t} n_{1}(t)=\left[\frac{r_{1, 1} g(t)}{k_{1, 1}+g(t)}+\frac{r_{2, 1} a(t)}{k_{2, 1}+a(t)}\right] n_{1}(t) $$$$
+    $
+    \frac{d}{d t} g(t)=-\sum_{i=1}^{2} \frac{1}{y_{1, i}} \frac{r_{1, i} g(t)}{k_{1, i}+g(t)} n_{i}(t)
+    $
+
+    $
+    \frac{d}{d t} a(t)=\sum_{i=1}^{2}\left[h_{i} \frac{r_{1, i} g(t)}{k_{1, i}+g(t)}-\frac{1}{y_{2, i}} \frac{r_{2, i} a(t)}{k_{2, i}+a(t)}\right] n_{i}(t)
+    $
+
+    $
+    \frac{d}{d t} n_{1}(t)=\left[\frac{r_{1, 1} g(t)}{k_{1, 1}+g(t)}+\frac{r_{2, 1} a(t)}{k_{2, 1}+a(t)}\right] n_{1}(t)
+    $
+
+    $
     \frac{d}{d t} n_{2}(t)=\left[\frac{r_{1, 2} g(t)}{k_{1, 2}+g(t)}+\frac{r_{2, 2} a(t)}{k_{2, 2}+a(t)}\right] n_{2}(t)
-    $$
+    $
 
     where
     - $r_{1,i}$ and $r_{2,i}$ are the maximum growth rates of type $i$ on, say, glucose and acetate, respectively
@@ -95,7 +105,7 @@ def _():
         return [dn1dt, dn2dt, dgdt, dadt] ###
 
     ode_crossfeed = ode
-    return (ode_crossfeed,)
+    return ode, ode_crossfeed
 
 
 @app.cell(hide_code=True)
@@ -110,15 +120,15 @@ def _(mo):
 
 
 @app.cell
-def _(ode_crossfeed, solve_ivp, np):
+def _(init, ode_crossfeed, solve_ivp, t):
     r11 = 1
 
     sol = solve_ivp(ode_crossfeed, (t.min(), t.max()), init, t_eval=t) #
-    return (sol,)
+    return
 
 
 @app.cell
-def _(sns, plt, sol):
+def _(plt, sns):
     red, blue, green, purple, orange  = sns.color_palette('Set1', 5) ###
     fig, ax = plt.subplots() ###
 
@@ -140,7 +150,7 @@ def _(mo):
 
 
 @app.cell
-def _(ode_crossfeed, solve_ivp):
+def _(p):
     # Note: use ode_crossfeed (available via closure) for the ODE solver inside growth_cycles
 
     def growth_cycles(p0, ncycles, F): ###
@@ -148,17 +158,19 @@ def _(ode_crossfeed, solve_ivp):
 
         return p ###
 
-    return (growth_cycles,)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""**Reproduce Figure 3B**.""")
+    mo.md(r"""
+    **Reproduce Figure 3B**.
+    """)
     return
 
 
 @app.cell
-def _(growth_cycles, plt):
+def _():
     # write code here
     return
 
@@ -175,10 +187,11 @@ def _(mo):
     Suppose that cells are lost from the capillaries by dislodgement or death at a per capita rate $\delta_1$ and that they invade the organ from the capillaries at a per capita rate $\beta$. Once cells are in the organ they die at a per capita rate $\delta_2$, and the cancer cells replicate at a per capita rate $\rho$.
 
     This gives the following euqations:
-    $$
-    \frac{dC}{dt} = -\delta_1 C - \beta C $$$$
+    $
+    \frac{dC}{dt} = -\delta_1 C - \beta C $
+    $
     \frac{dI}{dt} = \beta C - \delta_2 I + \rho I
-    $$
+    $
 
     **Implement the ODE and plot its solution for two sets of parameter values.**
 
@@ -187,29 +200,28 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def ode(t, x, δ1, δ2, β, ρ): ###
-        # write code here
-        return
-
-    return (ode,)
+@app.function
+def ode2(t, x, δ1, δ2, β, ρ): ###
+    # write code here
+    return
 
 
 @app.cell
-def _(ode, partial, solve_ivp, plt):
+def _(partial):
     δ1, δ2, β, ρ = 0.5, 0.5, 0.8, 0.4 ###
-    ode1 = partial(ode, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
+    ode1 = partial(ode2, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
     δ1, δ2, β, ρ = 0.5, 0.5, 0.8, 0.6 ###
-    ode2 = partial(ode, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
+    ode3 = partial(ode2, δ1=δ1, δ2=δ2, β=β, ρ=ρ) ###
 
     # write code here
-    return ode1, ode2
+    return δ2, ρ
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""We want to know if a new tumor will be able to take hold and grow or will it disappear?""")
+    mo.md(r"""
+    We want to know if a new tumor will be able to take hold and grow or will it disappear?
+    """)
     return
 
 
@@ -228,7 +240,7 @@ def _(np, ode):
     δ1, δ2, β, ρ = np.random.uniform(0, 1, size=(4, 1000)) ###
     x_star = None  # write code here
     np.allclose(ode(0, x_star, δ1, δ2, β, ρ).T, x_star) ###
-    return
+    return δ2, ρ
 
 
 @app.cell(hide_code=True)
@@ -257,17 +269,17 @@ def _():
     ###
     import sympy
     sympy.init_printing()
-    return (sympy,)
+    return
 
 
 @app.cell
-def _(sympy):
+def _():
     # write code here
     # Define sympy symbols for δ1, δ2, β, ρ
     # Compute the Jacobian at the equilibrium
     # Find the leading eigenvalue and assign it to λ
     # Also keep δ2 and ρ as sympy symbols for the visualization below
-    return δ2, λ, ρ
+    return
 
 
 @app.cell(hide_code=True)
@@ -287,11 +299,11 @@ def _(np, δ2, λ, ρ):
     δ2_ = np.linspace(0, 1, 100)
     ρ_ = np.linspace(0, 1, 100)
     stability = np.array([[λ.subs([(δ2, δ2_[i]), (ρ, ρ_[j])]) for i in range(100)] for j in range(100)]).astype(float)
-    return δ2_, ρ_, stability
+    return stability, δ2_, ρ_
 
 
 @app.cell
-def _(plt, δ2_, ρ_, stability):
+def _(plt, stability, δ2_, ρ_):
     plt.pcolormesh(δ2_, ρ_, stability, cmap='RdBu')
     plt.plot(δ2_, ρ_, color='k')
     plt.colorbar(label=r'$\lambda$')
@@ -302,7 +314,9 @@ def _(plt, δ2_, ρ_, stability):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""__end of assignment__""")
+    mo.md(r"""
+    __end of assignment__
+    """)
     return
 
 
