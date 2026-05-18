@@ -93,7 +93,7 @@ def _():
         y=[1, 1, 1, 1],
         h=[1, 1]): ###
         n1, n2, g, a = x
-    
+
         r11, r12, r21, r22 = r
         k11, k12, k21, k22 = k
         y11, y12, y21, y22 = y
@@ -167,7 +167,6 @@ def _(init_a, n_1_init, n_2_init, plt, sns, sol):
     sns.despine()
 
     fig
-
     return
 
 
@@ -270,7 +269,7 @@ def _(growth_cycles, n_1_init, n_2_init, np, plt, sns):
     cycles = np.arange(len(result_))
 
     ax1.plot(cycles, result_, '-ok')
-    
+
     ax1.set_xlabel('Number of growth cycles')
     ax1.set_ylabel(r'Relative frequency ')
 
@@ -347,7 +346,7 @@ def _(growth_cycles_swapped, np, p0, plt, sns):
     cycles_swapped = np.arange(len(result_swapped))
 
     ax2.plot(cycles_swapped, result_swapped, '-ok')
-    
+
     ax2.set_xlabel('Number of growth cycles')
     ax2.set_ylabel(r'Relative frequency ')
 
@@ -465,8 +464,7 @@ def _(mo):
     $
     I(\delta_2-\rho)=0
     $
-
-    and again, since all parameters are positive, we get $I^*=0$
+    though it is possible that $\delta_2=\rho$, the value of I that satisfy this condition for all $\delta_2, \rho$ is  $I^*=0$.
     """)
     return
 
@@ -509,17 +507,12 @@ def _():
 
 
 @app.cell
-def _():
+def _(sympy):
     # write code here
     # Define sympy symbols for δ1, δ2, β, ρ
     # Compute the Jacobian at the equilibrium
     # Find the leading eigenvalue and assign it to λ
     # Also keep δ2 and ρ as sympy symbols for the visualization below
-    return
-
-
-@app.cell
-def _(sympy):
     C, I = sympy.symbols('C I')
     # Define sympy symbols for δ1, δ2, β, ρ
     δ1_symp, δ2_symp, β_symp, ρ_sympy = sympy.symbols('δ1 δ2 β ρ')
@@ -538,7 +531,6 @@ def _(sympy):
     print(eigs)
     # Find the leading eigenvalue and assign it to λ
 
-
     return δ2_symp, ρ_sympy
 
 
@@ -547,11 +539,6 @@ def _(δ2_symp, ρ_sympy):
     # using that all parameters are positive: 
     λ = -δ2_symp + ρ_sympy
     return (λ,)
-
-
-@app.cell
-def _():
-    return
 
 
 @app.cell(hide_code=True)
