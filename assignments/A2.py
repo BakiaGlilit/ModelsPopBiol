@@ -11,6 +11,7 @@ def _():
     import numpy as np
     import seaborn as sns
     from numba import jit
+    import sympy as sp
 
     return jit, mo, np, plt, sns
 
@@ -153,7 +154,6 @@ def _(mo):
 @app.cell
 def _(SI0, simulation_SIS, β, γ):
     sim_SIS = simulation_SIS(SI0, β, γ, days=90)
-    sim_SIS[:5]
     return (sim_SIS,)
 
 
@@ -182,15 +182,47 @@ def _(mo):
     return
 
 
-@app.function
-def find_I_star(β, γ, days): ###
-    # your code here
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    at equilibrium, the number of infected individuals does not change, meaning $I_{t+1} = I_t$, etc, $\Delta I = 0$.
+
+    $$0 = \beta S^* \frac{I^*}{N} - \gamma I^*$$
+    take $I^*$ out:
+    $$0 = I^* \left( \frac{\beta S^*}{N} - \gamma \right)$$
+    we got trivial solution is $I^* = 0$, and $\frac{\beta (S^*)}{N} = \gamma$, whereas $S^* = N - I^*$.
+
+    then $\frac{\beta (N - I^*)}{N} = \gamma$, and solving for $I^*$:
+
+    $$I^* = N\left(1 - \frac{\gamma}{\beta}\right)$$
+
+    there is biological meaning to this only for $I^* > 0$, i.e when $\frac{\gamma}{\beta}\le 1  \to \gamma \le \beta$.
+    """)
     return
 
 
 @app.cell
-def _():
-    # your code here
+def find_I_star(SI0, simulation_SIS):
+    def find_I_star(β, γ, days): ###
+        SI = simulation_SIS(SI0, β, γ, days)
+        return SI[-1, 1]   
+
+    return (find_I_star,)
+
+
+@app.cell
+def _(find_I_star, np, plt, γ):
+    _days = 900
+    betas = np.linspace(0.01, 2.0, _days)
+    I_stars = [find_I_star(β, γ, days=_days) for β in betas]
+    plt.plot(betas, I_stars, color='red', label='$I^*$')
+    plt.axvline(x=γ, color='black', linestyle='--', label=f'$\\beta = \\gamma = {γ}$  ($R_0 = 1$)')
+    plt.xlabel('$\\beta$')
+    plt.ylabel('$I^*$')
+    plt.title('Endemic equilibrium $I^*$ as a function of $\\beta$')
+    plt.legend()
+    plt.tight_layout()
+    plt.gcf()
     return
 
 
