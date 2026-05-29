@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.5"
+__generated_with = "0.23.6"
 app = marimo.App()
 
 
@@ -12,7 +12,7 @@ def _():
     import seaborn as sns
     from numba import jit
 
-    return jit, mo, plt, sns
+    return jit, mo, np, plt, sns
 
 
 @app.cell
@@ -99,11 +99,23 @@ def _(mo):
 @app.cell
 def _(SI0, β, γ):
     def step_SIS(SI, β, γ): ###
-        # your code here
-        return
+        N =sum(SI)
+        St= SI[0]
+        It= SI[1]
+        St1 = St - β * St * (It / N) + γ * It
+        It1 = It + β * St * (It / N) - γ * It
+        if St1 < 0: 
+            St1, It1 = 0, It1
+        if It1 < 0: 
+            St1, It1 = St1, 0 
+        if It1 > N: 
+             St1, It1 = St1, N 
+        if St1 > N: 
+            St1, It1 = N, It1 
+        return [St1, It1]
 
     step_SIS(SI0, β, γ) ###
-    return
+    return (step_SIS,)
 
 
 @app.cell(hide_code=True)
@@ -119,13 +131,15 @@ def _(mo):
 
 
 @app.cell
-def _(SI0, β, γ):
+def _(np, step_SIS):
     def simulation_SIS(SI0, β, γ, days): ###
-        # your code here
-        return
+        _init_array = np.zeros((days, 2))
+        _init_array[0] = SI0
+        for t in range(1, days):
+            _init_array[t] = np.array(step_SIS(_init_array[t-1], β, γ))
+        return _init_array
 
-    print(simulation_SIS(SI0, β, γ, days=10)) ###
-    return
+    return (simulation_SIS,)
 
 
 @app.cell(hide_code=True)
@@ -137,8 +151,22 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # your code here
+def _(SI0, simulation_SIS, β, γ):
+    sim_SIS = simulation_SIS(SI0, β, γ, days=90)
+    sim_SIS[:5]
+    return (sim_SIS,)
+
+
+@app.cell
+def _(plt, sim_SIS):
+    plt.plot(sim_SIS[:, 0], color='blue', label='S')
+    plt.plot(sim_SIS[:, 1], color='red',  label='I')
+    plt.xlabel('Day')
+    plt.ylabel('Count')
+    plt.title('SIS model')
+    plt.legend()
+    plt.tight_layout()
+    plt.gcf()
     return
 
 
