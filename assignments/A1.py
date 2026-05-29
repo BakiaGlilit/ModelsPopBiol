@@ -143,6 +143,21 @@ def _(np, ode, partial, solve_ivp):
 
 
 @app.cell
+def _(sns, plt, sol):
+=======
+    t = np.linspace(0, 4, 1000)
+    init_a = 0
+    n_1_init, n_2_init =0.4, 0.1 
+    init = [n_1_init, n_2_init, 100,0]
+    ode_crossfeed_partial = partial(ode, r=r, k=k, y=y, h=h)
+
+    sol = solve_ivp(ode_crossfeed_partial, (t.min(), t.max()), init, t_eval=t) #
+    return init_a, n_1_init, n_2_init, sol
+
+
+@app.cell
+def _(init_a, n_1_init, n_2_init, plt, sns, sol):
+>>>>>>> 71c6284 (finished ex1)
 def _(init_a, n_1_init, n_2_init, plt, sns, sol):
     red, blue, green, purple, orange  = sns.color_palette('Set1', 5) ###
     fig, ax = plt.subplots() ###
@@ -211,10 +226,45 @@ def _(mo):
 
 
 @app.cell
+<<<<<<< HEAD
+def _(ode_crossfeed, solve_ivp):
+=======
+def _(np, ode_crossfeed, solve_ivp):
+>>>>>>> 71c6284 (finished ex1)
 def _(np, ode_crossfeed, solve_ivp):
     # Note: use ode_crossfeed (available via closure) for the ODE solver inside growth_cycles
 
     def growth_cycles(p0, ncycles, F): ###
+
+        N0 = 0.2 # initial total population
+        n2 = N0 * p0 # initial strains
+        n1 = N0 * (1 - p0)
+
+        g0 = 100 # initial resources
+        a0 = 0
+        t = np.linspace(0, 4, 500) # time for one growth cycle
+
+        p = np.empty(ncycles) # store frequencies
+
+        for i in range(ncycles):
+            init = [n1, n2, g0, a0]
+            sol = solve_ivp(
+                ode_crossfeed,
+                (t.min(), t.max()),
+                init,
+                t_eval=t,
+                rtol=1e-8,
+                atol=1e-10
+            )
+            n1_end = sol.y[0, -1]
+            n2_end = sol.y[1, -1]
+
+            p[i] = n2_end / (n1_end + n2_end) # frequency of strain 2
+            n1 = n1_end / F # dilution into fresh media
+            n2 = n2_end / F
+
+            g0 = 100 #reset resources for next cycle
+            a0 = 0
 
         N0 = 0.2 # initial total population
         n2 = N0 * p0 # initial strains
