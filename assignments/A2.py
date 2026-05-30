@@ -364,21 +364,27 @@ def _(mo):
 
 
 @app.cell
-def _(jit):
+def _(jit, np):
     @jit ###
     def logistic(N0, r, tmax): ###
-        # your code here
-        return
+        N = np.zeros(tmax)
+        N[0] = N0
+        for t in range(tmax - 1):
+            N[t+1] = r * N[t] * (1 - N[t])
+        return N
 
     return (logistic,)
 
 
 @app.cell
-def _(jit):
+def _(jit, np):
     @jit ###
     def ricker(N0, r, tmax): ###
-        # your code here
-        return
+        N = np.zeros(tmax)
+        N[0] = N0
+        for t in range(tmax - 1):
+            N[t+1] = N[t] * np.exp(r * (1 - N[t]))
+        return N
 
     return (ricker,)
 
@@ -420,14 +426,35 @@ def _(mo):
     return
 
 
-@app.function
-def bifurcation(model, npts=200): ###
-    # your code here
-    return
+@app.cell
+def bifurcation(np, plt):
+    def bifurcation(model, npts=200, rs_d = 0.01, rs_u = 4.0, tmax=1000, lp=200): ###
+        """"
+        rs_d: lower bound of r values
+        rs_u: upper bound of r values
+        npts: number of r values to simulate
+        tmax: total number of time steps to simulate for each r
+        lp: number of last points to plot for each r (to show the attractor)
+        """
+        N0 = 0.1
+        rs = np.linspace(rs_d, rs_u, npts)
+    
+        for r in rs:
+            N = model(N0, r, tmax)
+            plt.plot(
+                [r] * lp,       # same r value repeated lp times
+                N[-lp:],        # last lp values of N
+                ',k',          # pixel marker, black
+                alpha=0.1
+            )
+        plt.xlabel('r')
+        plt.ylabel('$N^*$')
+
+    return (bifurcation,)
 
 
 @app.cell
-def _(logistic, plt):
+def _(bifurcation, logistic, plt):
     bifurcation(logistic)
     plt.title('Logistic model')
     plt.gcf()
@@ -435,7 +462,7 @@ def _(logistic, plt):
 
 
 @app.cell
-def _(plt, ricker):
+def _(bifurcation, plt, ricker):
     bifurcation(ricker)
     plt.title('Ricker model')
     plt.gcf()
@@ -464,6 +491,27 @@ def _(mo):
 @app.cell
 def _():
     # your code here: use r_ui.value to run logistic(0.1, r_ui.value, 100) and plot
+    return
+
+
+@app.cell
+def _(mo):
+    r_ui = mo.ui.slider(0.1, 4.0, step=0.01, value=0.5, label='r')
+    r_ui
+    return (r_ui,)
+
+
+@app.cell
+def _(logistic, mo, plt, r_ui):
+    _N = logistic(0.1, r_ui.value, 100)
+
+    _fig, _ax = plt.subplots()
+    _ax.plot(_N, '-o', markersize=3)
+    _ax.set_xlabel('t')
+    _ax.set_ylabel('$N_t$')
+    _ax.set_title(f'Logistic model, r = {r_ui.value:.2f}')
+    _ax.set_ylim(0, 1) 
+    mo.mpl.interactive(_fig)
     return
 
 
