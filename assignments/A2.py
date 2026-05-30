@@ -242,22 +242,100 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def step_SEIS(SEI, β, γ, Δ): ###
-        # your code here
-        return
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    number of new exposures at time $t$: $F_t = \beta S_t \frac{I_t}{N}$
 
-    def simulation_SEIS(SEI0, β, γ, Δ, days): ###
-        # your code here
-        return
+    $S_{t+1}=S_t - F_t + \gamma I_t$
 
+    $E_{t+1}=E_t + F_t - F_{t-\Delta}$
+
+    $I_{t+1}=I_t + F_{t-\Delta} - \gamma I_t$
+
+    $F_{t-\Delta}$: number of individuals that became exposed $\Delta$ days ago and are now becoming infected.
+    sanity check: for  $\Delta=0$ we get $F_{t-\Delta}=F_t$, therefore:
+
+    $E_{t+1}=E_t+F_t-F_t=E_t$.
+
+    If $E_0=0$, then $E_t=0$ for all $t$, and the model reduces to
+
+    $S_{t+1}=S_t - \beta S_t \frac{I_t}{N} + \gamma I_t$
+
+    $I_{t+1}=I_t + \beta S_t \frac{I_t}{N} - \gamma I_t,$
+
+
+    which is the SIS model.
+    """)
     return
 
 
 @app.cell
-def _():
-    # your code here
+def _(np):
+    def step_SEIS(SEI, β, γ, Δ, t=None): ###
+        """
+        since we have dependency in time, we should have the values in SEI for the last Δ days. 
+        """
+        if t is None:
+            t = len(SEI)-1
+        St, Et, It = SEI[t]
+        N = St + Et + It
+        Ft = β * St * It / N
+
+        StD, EtD, ItD = SEI[t-Δ] if t - Δ >= 0 else (St, Et, It)
+
+        if t >= Δ:
+            StD, EtD, ItD = SEI[t-Δ]
+            FtD = β * StD * ItD / N
+        else:
+            FtD = 0
+
+
+        S_next = St - Ft + γ * It
+        E_next = Et + Ft - FtD
+        I_next = It + FtD - γ * It
+        if len(SEI) > t+1:
+            SEI[t+1] = [S_next, E_next, I_next]
+        else: 
+            SEI.append([S_next, E_next, I_next])
+        return SEI
+
+    def simulation_SEIS(SEI0, β, γ, Δ, days): ###
+        SEI = np.zeros((days, 3))
+        SEI[0] = SEI0
+        for t in range(days - 1):
+            SEI = step_SEIS(SEI, β, γ, Δ, t=t)
+        return SEI
+
+    return (simulation_SEIS,)
+
+
+@app.cell
+def _(plt, simulation_SEIS, β, γ):
+    SEI0 = (990, 0, 10)  # S, E, I — initially no exposed
+    deltas = [0, 2, 5, 10, 25]
+    days = 90
+    _fig, _axes = plt.subplots(len(deltas), 1, figsize=(8, 12), sharex=True)
+    for _ax, Δ in zip(_axes, deltas):
+        sim = simulation_SEIS(SEI0, β, γ, Δ, days)
+        _ax.plot(sim[:, 0], color='blue', label='S')
+        _ax.plot(sim[:, 1], color='green', label='E')
+        _ax.plot(sim[:, 2], color='red', label='I')
+        _ax.set_ylabel('Count')
+        _ax.set_title(f'Δ = {Δ}')
+        _ax.legend(loc='right')
+    _axes[-1].set_xlabel('Day')
+    _fig.suptitle(f'SEIS, β = {β}, γ = {γ}, days = {days}', y=1.01)
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    as a a sanity check, we can see that in the case of $\Delta=0$ we get the sane result as the SIS model.
+    """)
     return
 
 
