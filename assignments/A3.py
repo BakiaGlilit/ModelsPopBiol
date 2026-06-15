@@ -11,6 +11,7 @@ def _():
 
 @app.cell
 def _():
+    import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
     import numba
@@ -18,7 +19,7 @@ def _():
     from functools import partial
     from scipy.integrate import solve_ivp
 
-    return np, numba, partial, plt, sns, solve_ivp
+    return mo, np, numba, partial, plt, sns, solve_ivp
 
 
 @app.cell
@@ -705,16 +706,16 @@ def gillespie_ssa(gillespie_step, np):
         t = np.empty(t_steps)
         x = np.empty(t_steps, dtype=int)
         y = np.empty(t_steps, dtype=int)
-    
+
         t[0], x[0], y[0] = t0, x0, y0
-    
+
         for i in range(1, t_steps):
             x[i], y[i], dt = gillespie_step(x[i-1], y[i-1], b, h, ϵ, d)
             t[i] = t[i-1] + dt
-        
+
             if y[i] == 0 or t[i] >= tmax:
                 return t[:i+1], x[:i+1], y[:i+1]
-    
+
         return t, x, y
 
     return (gillespie_ssa,)
@@ -813,7 +814,7 @@ def _(X, Y, gillespie_ssa):
                 extinctions += 1
         return extinctions / reps
 
-    return (extinction_probability,)
+    return
 
 
 @app.cell
@@ -877,7 +878,7 @@ def _(b, d, extinction_probability_fast, ε):
 @app.cell
 def _(b, d, extinction_probability_fast, h, np, x0, y0, ε):
     _ = extinction_probability_fast(b,h,ϵ,d,x0=50,y0=100,reps=1)
-    hs = np.logspace(-3, -1, 30)
+    hs = np.logspace(-5, 0, 30)
     ps = np.array([extinction_probability_fast(b, h_, ϵ, d, x0, y0) for h_ in hs])
     np.save('ps.npy', ps)
     np.save('hs.npy', hs)
@@ -890,6 +891,19 @@ def _(hs, plt, ps, sns):
     _ax.plot(hs, ps, "-o", markersize=4)
     _ax.set(xlabel='Hunting probability $h$', ylabel='Extinction probability', xscale='log')
     sns.despine()
+    _fig.suptitle('Extinction Probability vs Hunting Probability')
+    _fig
+    return
+
+
+@app.cell
+def _(np, plt, sns):
+    _fig, _ax = plt.subplots()
+    _hs, _ps = np.load('hs_0.npy'), np.load('ps_0.npy')
+    _ax.plot(_hs, _ps, "-o", markersize=4)
+    _ax.set(xlabel='Hunting probability $h$', ylabel='Extinction probability', xscale='log')
+    sns.despine()
+    _fig.suptitle('Extinction Probability vs Hunting Probability')
     _fig
     return
 
