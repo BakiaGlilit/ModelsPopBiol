@@ -1,18 +1,24 @@
 import marimo
 
-__generated_with = "0.23.5"
+__generated_with = "0.23.9"
 app = marimo.App()
 
 
 @app.cell
 def _():
-    import marimo as mo
+    return
+
+
+@app.cell
+def _():
     import matplotlib.pyplot as plt
     import numpy as np
+    import numba
     import seaborn as sns
     from functools import partial
     from scipy.integrate import solve_ivp
-    return mo, np, partial, plt, sns, solve_ivp
+
+    return np, numba, partial, plt, sns, solve_ivp
 
 
 @app.cell
@@ -50,7 +56,9 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# Ex 1: Model adaptive peak shifts""")
+    mo.md(r"""
+    # Ex 1: Model adaptive peak shifts
+    """)
     return
 
 
@@ -198,10 +206,76 @@ def _(mo):
 
 
 @app.cell
-def _():
-    def evolution(N, u, s, H, history=False): ###
-        # your code here
-        return
+def _(np):
+
+    def mutation_matrix(u):
+        M = np.array([
+            [(1-u)**2,  u*(1-u),  u*(1-u),  u**2],
+            [u*(1-u),   (1-u)**2, u**2,     u*(1-u)],
+            [u*(1-u),   u**2,     (1-u)**2, u*(1-u)],
+            [u**2,      u*(1-u),  u*(1-u),  (1-u)**2],
+        ])
+        return M
+
+    def selection_vector(s, H):
+        w = np.array([1.0, 1 - s, 1 - s, 1 + s * H])  # ab, Ab, aB, AB
+        return w
+
+    def step(x, M, w, N):
+        xm = M @ x # mutation
+        xs = w * xm # selection
+        xs = xs / xs.sum() # normalization
+
+        counts = np.random.multinomial(N, xs) # genetic drift
+        x = counts / N
+        return x
+
+    def init_memory(history, x):
+        if history:
+            capacity = 1024
+            freq_history = np.empty((capacity, 4), dtype=np.float64)
+            freq_history[0] = x.copy()
+            hist_len = 1
+            return freq_history, hist_len
+        else:
+            return None, 0
+
+    def record(x, freq_history, hist_len, extend_by=None):
+        if hist_len == len(freq_history):
+            if extend_by is None:
+                extend_by = len(freq_history) 
+            extra = np.empty((extend_by, 4), dtype=np.float64)  # double by adding equal block
+            freq_history = np.concatenate([freq_history, extra])
+        freq_history[hist_len] = x
+        hist_len += 1
+        return freq_history, hist_len
+
+
+    def evolution(N, u, s, H, history=False, extend_by=1024): ###
+        M = mutation_matrix(u)
+        w = selection_vector(s, H)
+        x = np.array([1.0, 0.0, 0.0, 0.0])
+
+        freq_history, hist_len = init_memory(history, x)
+
+        appear_time = 0
+        while x[3] == 0: 
+            appear_time += 1
+            x = step(x, M, w, N)
+            if history:
+                freq_history, hist_len = record(x, freq_history, hist_len, extend_by=extend_by)
+
+        fix_ext_time = 0
+        while 0 < x[3] < 0.99: 
+            fix_ext_time += 1
+            x = step(x, M, w, N)
+            if history:
+                freq_history, hist_len = record(x, freq_history, hist_len, extend_by=extend_by)
+
+
+        is_fixed = x[3] >= 0.99
+        hist = freq_history[:hist_len] if history else None
+        return is_fixed, appear_time, fix_ext_time, hist
 
     return (evolution,)
 
@@ -221,8 +295,146 @@ def _(mo):
 
 
 @app.cell
-def _(evolution, plt):
-    # your code here
+def _(evolution):
+    _N, _u, _s, _H = int(1e7), 1e-6, 0.05, 2.0
+
+    ext_param = fixed_param = None
+    while fixed_param is None or ext_param is None:
+        fixed, appear_time, fix_ext_time, hist = evolution(_N, _u, _s, _H, history=True)
+        if fixed and fixed_param is None:
+            fixed_param = [appear_time, fix_ext_time, hist]
+        elif not fixed and ext_param is None:
+            ext_param = [appear_time, fix_ext_time, hist]
+    return ext_param, fixed_param
+
+
+@app.cell
+def _(ext_param):
+    ext_param
+    return
+
+
+@app.cell
+def _(fixed_param):
+    fixed_param[2][15].sum()
+    return
+
+
+@app.cell
+def _(ext_param, fixed_param, np):
+    #sanity check
+    one_sum = True
+    for gen, gen_freq in enumerate(fixed_param[2]):
+      if not np.isclose(gen_freq.sum(), np.float64(1.0)):
+        one_sum = False
+        print(gen) 
+
+    one_sum = True
+    for gen, gen_freq in enumerate(ext_param[2]):
+      if not np.isclose(gen_freq.sum(), np.float64(1.0)):
+        one_sum = False
+        print(gen) 
+    return
+
+
+@app.cell
+def _(blue, ext_param, fixed_param, green, plt, red):
+    appear_fix = fixed_param[0]
+    end_fix = appear_fix + fixed_param[1]
+
+    appear_ext = ext_param[0]
+    end_ext = appear_ext + ext_param[1]
+
+    hist_ext = ext_param[-1]
+    hist_fix = fixed_param[-1]
+    genotype_labels = ["ab", "Ab", "aB", "AB"]
+    genotype_colors = [blue, green, "orange", red]
+
+    fig_dynamics, axes_dynamics = plt.subplots(
+        1, 2,
+        figsize=(12, 4),
+        sharey=True
+    )
+
+    for genotype_idx in range(4):
+        axes_dynamics[0].plot(
+            hist_fix[:, genotype_idx],
+            label=genotype_labels[genotype_idx],
+            color=genotype_colors[genotype_idx],
+        )
+
+        axes_dynamics[1].plot(
+            hist_ext[:, genotype_idx],
+            label=genotype_labels[genotype_idx],
+            color=genotype_colors[genotype_idx],
+        )
+    axes_dynamics[0].axvline(
+        appear_fix,
+        ls="--",
+        color="k",
+        alpha=0.7,
+        label="appearance",
+    )
+
+    axes_dynamics[0].axvline(
+        end_fix,
+        ls=":",
+        color=green,
+        alpha=0.9,
+        label="fixation",
+    )
+
+    axes_dynamics[1].axvline(
+        appear_ext,
+        ls="--",
+        color="k",
+        alpha=0.7,
+        label="appearance",
+    )
+
+    axes_dynamics[1].axvline(
+        end_ext,
+        ls=":",
+        color="red",
+        alpha=0.9,
+        label="extinction",
+    )
+
+    axes_dynamics[0].set(
+        title="Double mutant fixation",
+        xlabel="Generation",
+        ylabel="Frequency",
+        ylim=(0, 1),
+    )
+
+    axes_dynamics[1].set(
+        title="Double mutant extinction",
+        xlabel="Generation",
+        ylim=(0, 1),
+    )
+
+    handles_fix, labels_fix = axes_dynamics[0].get_legend_handles_labels()
+    handles_ext, labels_ext = axes_dynamics[1].get_legend_handles_labels()
+
+    all_handles = handles_fix + handles_ext
+    all_labels = labels_fix + labels_ext
+
+    legend_dict = dict(zip(all_labels, all_handles))
+
+
+    axes_dynamics[0].legend(
+        legend_dict.values(),
+        legend_dict.keys(),
+        loc="upper left",
+    )
+
+    fig_dynamics.tight_layout()
+    fig_dynamics
+    return
+
+
+@app.cell
+def _():
     return
 
 
@@ -246,16 +458,91 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # your code here — run many simulations and collect fixations, apper_times, fix_times
-    fixations = None
-    apper_times = None
-    fix_times = None
-    return apper_times, fix_times, fixations
+def _(np, numba):
+    @numba.njit
+    def mutation_matrix_f(u):
+        M = np.array([
+            [(1-u)**2,  u*(1-u),  u*(1-u),  u**2],
+            [u*(1-u),   (1-u)**2, u**2,     u*(1-u)],
+            [u*(1-u),   u**2,     (1-u)**2, u*(1-u)],
+            [u**2,      u*(1-u),  u*(1-u),  (1-u)**2],
+        ])
+        return M
+
+    @numba.njit
+    def selection_vector_f(s, H):
+        return np.array([1.0, 1 - s, 1 - s, 1 + s * H])
+
+    @numba.njit
+    def step_f(x, M, w, N):
+        xm = M @ x
+        xs = w * xm
+        xs = xs / xs.sum()
+        counts = np.random.multinomial(N, xs)
+        return counts / N
+
+    @numba.njit
+    def evolution_fast(N, u, s, H):
+        M = mutation_matrix_f(u)
+        w = selection_vector_f(s, H)
+        x = np.array([1.0, 0.0, 0.0, 0.0])
+
+        appear_time = 0
+        while x[3] == 0:
+            appear_time += 1
+            x = step_f(x, M, w, N)
+
+        fix_ext_time = 0
+        while 0 < x[3] < 0.99:
+            fix_ext_time += 1
+            x = step_f(x, M, w, N)
+
+        return x[3] >= 0.99, appear_time, fix_ext_time
+
+    return (evolution_fast,)
 
 
 @app.cell
-def _(apper_times, blue, fix_times, fixations, green, plt, red, sns):
+def _():
+    # your code here — run many simulations and collect fixations, apper_times, fix_times
+    return
+
+
+@app.cell
+def _(evolution_fast, np):
+    N, u, s, H = int(1e7), 1e-6, 0.05, 2.0
+    reps = 10000
+    results = np.empty((reps, 3), dtype=np.float64)
+    for i in range(reps):
+        results[i] = evolution_fast(N, u, s, H)
+
+    fixations     = results[:, 0].astype(bool)
+    appear_times  = results[:, 1].astype(int)
+    fix_ext_times = results[:, 2].astype(int)
+    return H, N, appear_times, fix_ext_times, fixations, reps, s, u
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _(
+    H,
+    N,
+    appear_times,
+    blue,
+    fix_ext_times,
+    fixations,
+    green,
+    plt,
+    red,
+    reps,
+    s,
+    sns,
+    u,
+):
     ### this code is for your convinience, you can change it if you want.
     fig, axes = plt.subplots(1, 4, figsize=(12, 4))
 
@@ -264,17 +551,18 @@ def _(apper_times, blue, fix_times, fixations, green, plt, red, sns):
     ax.set(xticks=[0, 1], xticklabels=['Extinctions', 'Fixations'], ylabel='Frequency', ylim=(0, 1))
 
     ax = axes[1]
-    ax.hist(apper_times, bins=100, color=green, density=True)
-    ax.set(xlabel='Time for Apperance')
+    ax.hist(appear_times, bins=100, color=green, density=True)
+    ax.set(xlabel='Time for Appearance')
 
     ax = axes[2]
-    ax.hist(fix_times[~fixations], bins=50, color=red, density=True)
+    ax.hist(fix_ext_times[~fixations], bins=50, color=red, density=True)
     ax.set(xlabel='Time for Extinction')
 
     ax = axes[3]
-    ax.hist(fix_times[fixations], bins=50, color=blue, density=True)
+    ax.hist(fix_ext_times[fixations], bins=50, color=blue, density=True)
     ax.set(xlabel='Time for Fixation')
 
+    fig.suptitle(f"reps = {reps}, N={N}, u={u}, s={s}, H={H}")
     fig.tight_layout()
     sns.despine()
     fig
@@ -303,11 +591,11 @@ def _():
     steps = 100000  # number integration steps
     x0, y0 = 50, 100  # initial population sizes
     dt = 0.001  # time step for integration
-    return b, d, dt, h, steps, x0, y0, ϵ
+    return b, d, dt, h, steps, x0, y0, ε
 
 
 @app.cell
-def _(b, d, dt, h, np, partial, plt, solve_ivp, steps, x0, y0, ϵ):
+def _(b, d, dt, h, np, partial, plt, solve_ivp, steps, x0, y0, ε):
     ### deterministic model from class
     def dxydt(t, xy, b, h, ϵ, d):
         x, y = xy
@@ -355,31 +643,22 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def get_rates(x, y, b, h, ϵ, d): ###
-        # your code here
-        return
-
-    return (get_rates,)
+@app.function
+def get_rates(x, y, b, h, ϵ, d): ###
+    # your code here
+    return
 
 
-@app.cell
-def _():
-    def draw_time(rates): ###
-        # your code here
-        return
-
-    return (draw_time,)
+@app.function
+def draw_time(rates): ###
+    # your code here
+    return
 
 
-@app.cell
-def _():
-    def draw_reaction(rates): ###
-        # your code here
-        return
-
-    return (draw_reaction,)
+@app.function
+def draw_reaction(rates): ###
+    # your code here
+    return
 
 
 @app.cell
@@ -390,29 +669,23 @@ def _(np):
         # prey killed, predator born
         # predator killed
     ]) ###
-    return (updates,)
+    return
+
+
+@app.function
+def gillespie_step(x, y, b, h, ϵ, d): ###
+    # your code here
+    return
+
+
+@app.function
+def gillespie_ssa(b, h, ϵ, d, t0=0, x0=50, y0=100, t_steps=100000, tmax=100): ###
+    # your code here
+    return
 
 
 @app.cell
-def _():
-    def gillespie_step(x, y, b, h, ϵ, d): ###
-        # your code here
-        return
-
-    return (gillespie_step,)
-
-
-@app.cell
-def _():
-    def gillespie_ssa(b, h, ϵ, d, t0=0, x0=50, y0=100, t_steps=100000, tmax=100): ###
-        # your code here
-        return
-
-    return (gillespie_ssa,)
-
-
-@app.cell
-def _(b, d, gillespie_ssa, h, ϵ):
+def _(b, d, h, ε):
     ###
     t_ssa, x_ssa, y_ssa = gillespie_ssa(b, h, ϵ, d)
     return t_ssa, x_ssa, y_ssa
@@ -488,21 +761,23 @@ def _(X, Y):
 
 
 @app.cell
-def _(b, d, extinction_probability, np, ϵ):
+def _(b, d, extinction_probability, np, ε):
     hs = np.logspace(-3, 0, 30)
     ps = np.array([extinction_probability(b, h_, ϵ, d) for h_ in hs])
-    return hs, ps
+    return
 
 
 @app.cell
-def _(hs, plt, ps):
+def _():
     # your code here — plot ps vs hs
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""__end of assignment__""")
+    mo.md(r"""
+    __end of assignment__
+    """)
     return
 
 
