@@ -887,7 +887,7 @@ def _(b, d, extinction_probability_fast, h, np, x0, y0, ε):
 @app.cell
 def _(hs, plt, ps, sns):
     _fig, _ax = plt.subplots()
-    _ax.plot(hs, ps)
+    _ax.plot(hs, ps, "-o", markersize=4)
     _ax.set(xlabel='Hunting probability $h$', ylabel='Extinction probability', xscale='log')
     sns.despine()
     _fig
