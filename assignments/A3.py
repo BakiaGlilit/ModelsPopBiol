@@ -813,7 +813,7 @@ def _(X, Y, gillespie_ssa):
                 extinctions += 1
         return extinctions / reps
 
-    return
+    return (extinction_probability,)
 
 
 @app.cell
