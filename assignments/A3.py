@@ -519,11 +519,12 @@ def _(evolution_fast, np):
     fixations     = results[:, 0].astype(bool)
     appear_times  = results[:, 1].astype(int)
     fix_ext_times = results[:, 2].astype(int)
-    return H, N, appear_times, fix_ext_times, fixations, reps, s, u
+    return H, N, appear_times, fix_ext_times, fixations, reps, results, s, u
 
 
 @app.cell
-def _():
+def _(np, results):
+    np.save('results.npy', results)
     return
 
 
@@ -643,49 +644,84 @@ def _(mo):
     return
 
 
-@app.function
-def get_rates(x, y, b, h, ϵ, d): ###
-    # your code here
-    return
+@app.cell
+def get_rates(np):
+    def get_rates(x, y, b, h, ϵ, d): ###
+        prey_born = b * x
+        prey_killed_no_birth = (1 - ϵ) * h * x * y
+        prey_killed_pred_born = ϵ * h * x * y
+        pred_died = d * y
+        return np.array([prey_born, prey_killed_no_birth, prey_killed_pred_born, pred_died])
 
 
-@app.function
-def draw_time(rates): ###
-    # your code here
-    return
+    return (get_rates,)
 
 
-@app.function
-def draw_reaction(rates): ###
-    # your code here
-    return
+@app.cell
+def draw_time(np):
+    def draw_time(rates): ###
+        total = rates.sum()
+        return np.random.exponential(1 / total)
+
+    return (draw_time,)
+
+
+@app.cell
+def draw_reaction(np):
+    def draw_reaction(rates): ###
+        total = rates.sum()
+        probs = rates / total
+        return np.random.choice(len(rates), p=probs)
+
+    return (draw_reaction,)
 
 
 @app.cell
 def _(np):
-    updates = np.array([ ###
-        # prey born
-        # prey killed, no predator born
-        # prey killed, predator born
-        # predator killed
-    ]) ###
-    return
-
-
-@app.function
-def gillespie_step(x, y, b, h, ϵ, d): ###
-    # your code here
-    return
-
-
-@app.function
-def gillespie_ssa(b, h, ϵ, d, t0=0, x0=50, y0=100, t_steps=100000, tmax=100): ###
-    # your code here
-    return
+    updates = np.array([
+        [ 1,  0],  # prey born
+        [-1,  0],  # prey killed, no predator born
+        [-1,  1],  # prey killed, predator born
+        [ 0, -1],  # predator died
+    ])
+    return (updates,)
 
 
 @app.cell
-def _(b, d, h, ε):
+def gillespie_step(draw_reaction, draw_time, get_rates, updates):
+    def gillespie_step(x, y, b, h, ϵ, d): ###
+        rates = get_rates(x, y, b, h, ϵ, d)
+        dt = draw_time(rates)
+        reaction = draw_reaction(rates)
+        dx, dy = updates[reaction]
+        return x + dx, y + dy, dt
+
+    return (gillespie_step,)
+
+
+@app.cell
+def gillespie_ssa(gillespie_step, np):
+    def gillespie_ssa(b, h, ϵ, d, t0=0, x0=50, y0=100, t_steps=100000, tmax=100): ###
+        t = np.empty(t_steps)
+        x = np.empty(t_steps, dtype=int)
+        y = np.empty(t_steps, dtype=int)
+    
+        t[0], x[0], y[0] = t0, x0, y0
+    
+        for i in range(1, t_steps):
+            x[i], y[i], dt = gillespie_step(x[i-1], y[i-1], b, h, ϵ, d)
+            t[i] = t[i-1] + dt
+        
+            if y[i] == 0 or t[i] >= tmax:
+                return t[:i+1], x[:i+1], y[:i+1]
+    
+        return t, x, y
+
+    return (gillespie_ssa,)
+
+
+@app.cell
+def _(b, d, gillespie_ssa, h, ε):
     ###
     t_ssa, x_ssa, y_ssa = gillespie_ssa(b, h, ϵ, d)
     return t_ssa, x_ssa, y_ssa
@@ -751,25 +787,110 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### figuring out the parameters
+    for p=extinction probability, p(1-p) is maximal for p=0.5.
+
+     $SE = \sqrt{p(1-p)/n}$ for $p=0.5$: $SE = 0.5/\sqrt{n}$.
+
+    we will take the 95% confidence interval: $p \pm 2 \cdot SE \approx p \pm 1/\sqrt{n}$.
+
+
+    For accuracy within $\pm 0.05$ we need $n \geq 400$, so we use $n=500$ replications per $h$ value.
+    """)
+    return
+
+
 @app.cell
-def _(X, Y):
+def _(X, Y, gillespie_ssa):
     def extinction_probability(b, h, ϵ, d, x0=X[0], y0=Y[0], reps=500): ###
-        # your code here
-        return
+        extinctions = 0
+        for _ in range(reps):
+            t, x, y = gillespie_ssa(b, h, ϵ, d, x0=x0, y0=y0, tmax=50)
+            if y[-1] == 0:
+                extinctions += 1
+        return extinctions / reps
 
-    return (extinction_probability,)
-
-
-@app.cell
-def _(b, d, extinction_probability, np, ε):
-    hs = np.logspace(-3, 0, 30)
-    ps = np.array([extinction_probability(b, h_, ϵ, d) for h_ in hs])
     return
 
 
 @app.cell
 def _():
-    # your code here — plot ps vs hs
+    return
+
+
+@app.cell
+def _(np, numba):
+    @numba.njit
+    def get_rates_fast(x, y, b, h, ϵ, d):
+        return np.array([b*x, (1-ϵ)*h*x*y, ϵ*h*x*y, d*y])
+
+    @numba.njit
+    def draw_reaction_fast(rates):
+        r = np.random.random() * rates.sum()
+        cumsum = 0.0
+        for j in range(len(rates)):
+            cumsum += rates[j]
+            if r < cumsum:
+                return j
+        return len(rates) - 1  # fallback for floating point edge cases
+
+    @numba.njit
+    def gillespie_ssa_fast(b, h, ϵ, d, t0=0, x0=50, y0=100, tmax=50):
+        # same implementation, no numpy array for t/x/y history, just track current state
+        x, y, t = x0, y0, t0
+        while t < tmax and y > 0:
+            rates = get_rates_fast(x, y, b, h, ϵ, d)
+            rate_sum = rates.sum()
+            if rate_sum == 0:
+                break
+            t += np.random.exponential(1 / rate_sum)
+            reaction = draw_reaction_fast(rates)
+            if reaction == 0: x += 1
+            elif reaction == 1: x -= 1
+            elif reaction == 2:
+                x -= 1
+                y += 1
+            else: y -= 1
+        return y == 0
+
+    @numba.njit(parallel=True)
+    def extinction_probability_fast(b, h, ϵ, d, x0, y0, reps=500, tmax=50.0):
+        extinctions = np.zeros(reps, dtype=np.int64)
+        for i in numba.prange(reps):  # ty:ignore[not-iterable]
+            extinctions[i] += gillespie_ssa_fast(b, h, ϵ, d, tmax=tmax, x0=x0, y0=y0)
+        return extinctions.mean()
+
+    return (extinction_probability_fast,)
+
+
+@app.cell
+def _(b, d, extinction_probability_fast, ε):
+    for h_test in [0.01, 0.1, 1.0, 10.0, 100.0]:
+        result = extinction_probability_fast(b, h_test, ϵ, d, x0=50, y0=100, reps=20)
+        print(f"h={h_test:.2f}: p_ext={result:.2f}")
+    return
+
+
+@app.cell
+def _(b, d, extinction_probability_fast, h, np, x0, y0, ε):
+    _ = extinction_probability_fast(b,h,ϵ,d,x0=50,y0=100,reps=1)
+    hs = np.logspace(-3, -1, 30)
+    ps = np.array([extinction_probability_fast(b, h_, ϵ, d, x0, y0) for h_ in hs])
+    np.save('ps.npy', ps)
+    np.save('hs.npy', hs)
+    return hs, ps
+
+
+@app.cell
+def _(hs, plt, ps, sns):
+    _fig, _ax = plt.subplots()
+    _ax.plot(hs, ps)
+    _ax.set(xlabel='Hunting probability $h$', ylabel='Extinction probability', xscale='log')
+    sns.despine()
+    _fig
     return
 
 
