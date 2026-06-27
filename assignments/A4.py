@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.5"
+__generated_with = "0.23.9"
 app = marimo.App()
 
 
@@ -19,27 +19,15 @@ def _():
     from scipy.integrate import solve_ivp
     import scipy.optimize
     import scipy.stats
-    return (
-        datetime,
-        mo,
-        np,
-        os,
-        partial,
-        pd,
-        plt,
-        scipy,
-        sns,
-        solve_ivp,
-        urllib,
-        zipfile,
-    )
+
+    return datetime, mo, np, os, partial, pd, plt, scipy, sns, urllib, zipfile
 
 
 @app.cell
 def _(sns):
     sns.set_palette('Set1')
     red, blue, green = sns.color_palette('Set1', 3) ###
-    return blue, green, red
+    return green, red
 
 
 @app.cell(hide_code=True)
@@ -70,7 +58,9 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# Ex 1: warm vs. cold-blooded animals.""")
+    mo.md(r"""
+    # Ex 1: warm vs. cold-blooded animals.
+    """)
     return
 
 
@@ -148,6 +138,12 @@ def _(data):
     return (data_clean,)
 
 
+@app.cell
+def _(data_clean):
+    data_clean
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -175,8 +171,19 @@ def _(mo):
 
 
 @app.cell
-def _(data_clean, mammals, plt):
+def _(data_clean):
+    mammal_df=data_clean.loc[data_clean['Class'] == 'Mammalia']
+    amphib_df=data_clean.loc[data_clean['Class'] == 'Amphibia']
+    reptile_df=data_clean.loc[data_clean['Class'] == 'Reptilia']
+
+    return
+
+
+@app.cell
+def _(data_clean, sns):
     # your code here
+    sns.histplot(data=data_clean, x='Temperature (C)', hue='Class', stat="density", common_norm=False)
+
     return
 
 
@@ -228,10 +235,17 @@ def _(data_clean, mammals):
 
 
 @app.cell
-def _(X1, X2):
+def _(X1, X2, np):
     # your code here — compute X1bar, X2bar, s1, s2, N1, N2, t
     t = None
+    X1bar = X1.mean()
+    X2bar = X2.mean()
+    s1 = X1.std(ddof=1)
+    s2 = X2.std(ddof=1)
+    N1 = len(X1)
+    N2 = len(X2)
 
+    t = (X1bar - X2bar) / np.sqrt(s1**2 / N1 + s2**2 / N2)
     print('t = {:.3f}'.format(t)) ###
     return N1, N2, s1, s2, t
 
@@ -272,7 +286,9 @@ def _(N1, N2, s1, s2, scipy, t):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""By the way, we could have just used `scipy.stats.ttest`. Here's how to do that:""")
+    mo.md(r"""
+    By the way, we could have just used `scipy.stats.ttest`. Here's how to do that:
+    """)
     return
 
 
@@ -320,7 +336,7 @@ def _(mo):
 def _(X1, X2, np):
     X = np.concatenate((X1, X2)) ###
     Xbar = X.mean() ###
-    return X, Xbar
+    return (Xbar,)
 
 
 @app.cell
@@ -336,30 +352,52 @@ def _():
 def _(X1, X2, Xbar, pm):
     # your code here — build the PyMC model and sample
     idata = None
+    with pm.Model() as model:
+        # Priors
+        mu1 = pm.Normal('mu1', mu=Xbar, sigma=50)
+        mu2 = pm.Normal('mu2', mu=Xbar, sigma=50)
+        sigma1 = pm.Exponential('sigma1', lam=1/10)
+        sigma2 = pm.Exponential('sigma2', lam=1/10)
+    
+        # Likelihood
+        obs1 = pm.Normal('obs1', mu=mu1, sigma=sigma1, observed=X1)
+        obs2 = pm.Normal('obs2', mu=mu2, sigma=sigma2, observed=X2)
+    
+        # Sample
+        idata = pm.sample()
     return (idata,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""**Plot a trace plot** to make sure the Markov chain has converged.""")
+    mo.md(r"""
+    **Plot a trace plot** to make sure the Markov chain has converged.
+    """)
     return
 
 
 @app.cell
 def _(az, idata, plt):
     # your code here
+    az.plot_trace(idata)
+    plt.tight_layout()
+    plt.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""**Plot a pair plot** to examine the posterior. It should show nice gaussians, both on and off the diagonal.""")
+    mo.md(r"""
+    **Plot a pair plot** to examine the posterior. It should show nice gaussians, both on and off the diagonal.
+    """)
     return
 
 
 @app.cell
-def _(az, idata):
+def _(az, idata, plt):
     # your code here
+    az.plot_pair(idata)
+    plt.show()
     return
 
 
@@ -377,14 +415,33 @@ def _(mo):
 
 
 @app.cell
-def _(az, idata, plt):
+def _(idata, plt):
     # your code here
+    mu1_samples = idata.posterior['mu1'].values.flatten()
+    mu2_samples = idata.posterior['mu2'].values.flatten()
+
+    delta_mu = mu1_samples - mu2_samples
+
+    # posterior of delta_mu
+    plt.figure()
+    plt.hist(delta_mu, bins=50, density=True)
+    plt.axvline(0, color='red', linestyle='--', label='no difference')
+    plt.xlabel('Δμ = μ1 - μ2')
+    plt.ylabel('density')
+    plt.title('Posterior of difference in means')
+    plt.legend()
+    plt.show()
+
+    prob = (delta_mu > 0).mean()
+    print('P(μ1 > μ2) = {:.4f}'.format(prob))
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# Ex 2: Fit Lotka-Volterra competition models to experimental data""")
+    mo.md(r"""
+    # Ex 2: Fit Lotka-Volterra competition models to experimental data
+    """)
     return
 
 
@@ -436,8 +493,9 @@ def _(mo):
 
 
 @app.cell
-def _(df, green, plt, red):
+def _(df, green, red, sns):
     # your code here
+    sns.lineplot(data=df, x='time', y='frequency', hue='strain', palette={'Green': green, 'Red': red})
     return
 
 
@@ -533,7 +591,7 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_model, LV6_model, green, np, plt, red):
+def _():
     # your code here
     return
 
@@ -586,31 +644,19 @@ def _(LV4_model, LV6_model, df, partial):
 
     loss_LV4 = partial(loss, model=LV4_model) ###
     loss_LV6 = partial(loss, model=LV6_model) ###
-    return X1_freq, X2_freq, loss_LV4, loss_LV6, times, xinit
+    return
 
 
 @app.cell
-def _(loss_LV4, loss_LV6):
+def _():
     # your code here — minimize loss_LV4 and loss_LV6, print fitted parameters
     result_LV4 = None
     result_LV6 = None
-    return result_LV4, result_LV6
+    return
 
 
 @app.cell
-def _(
-    LV4_model,
-    LV6_model,
-    X1_freq,
-    X2_freq,
-    green,
-    plt,
-    red,
-    result_LV4,
-    result_LV6,
-    times,
-    xinit,
-):
+def _():
     # your code here — plot data and fitted curves for LV4 and LV6
     return
 
@@ -630,14 +676,16 @@ def _(mo):
 
 
 @app.cell
-def _(result_LV4, result_LV6, scipy, times):
+def _():
     # your code here — compute F-statistic and p-value, print conclusion
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""__end of assignment__""")
+    mo.md(r"""
+    __end of assignment__
+    """)
     return
 
 
