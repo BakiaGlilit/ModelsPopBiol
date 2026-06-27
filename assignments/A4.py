@@ -20,7 +20,20 @@ def _():
     import scipy.optimize
     import scipy.stats
 
-    return datetime, mo, np, os, partial, pd, plt, scipy, sns, urllib, zipfile
+    return (
+        datetime,
+        mo,
+        np,
+        os,
+        partial,
+        pd,
+        plt,
+        scipy,
+        sns,
+        solve_ivp,
+        urllib,
+        zipfile,
+    )
 
 
 @app.cell
@@ -550,13 +563,14 @@ def _(mo):
 
 @app.cell
 def _():
-    def LV6_ode(t, x, *params): ###
-        # your code here
-        return
+    def LV6_ode(t, x, r1, r2, K1, K2, alpha1, alpha2): ###
+        x1, x2 = x
+        dx1dt = r1 * x1 * (1 - (x1 + alpha2 * x2) / K1)
+        dx2dt = r2 * x2 * (1 - (alpha1 * x1 + x2) / K2)
+        return [dx1dt, dx2dt]
 
-    def LV4_ode(t, x, *params): ###
-        # your code here
-        return
+    def LV4_ode(t, x, r1, r2, K1, K2): ###
+        return LV6_ode(t, x, r1, r2, K1, K2, 1, 1)
 
     return LV4_ode, LV6_ode
 
@@ -571,13 +585,16 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_ode, LV6_ode, partial):
-    def model(ode, t, xinit, *params): ###
-        # your code here
+def _(LV4_ode, LV6_ode, partial, solve_ivp):
+    def LVmodel(ode, t, xinit, *params): ###
+        sol = solve_ivp(ode, [t[0], t[-1]], xinit, t_eval=t, args=params)
+        total = sol.y[0] + sol.y[1]
+        return sol.y[0] / total, sol.y[1] / total
         return
 
-    LV4_model = partial(model, LV4_ode) ###
-    LV6_model = partial(model, LV6_ode) ###
+    LV4_model = partial(LVmodel, LV4_ode) ###
+    LV6_model = partial(LVmodel, LV6_ode) ###
+
     return LV4_model, LV6_model
 
 
@@ -591,8 +608,33 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(LV4_model, LV6_model, green, np, plt, red):
     # your code here
+    t_example = np.linspace(0, 50, 500)
+    xinit_example = [0.5, 0.5]
+
+    # Parameters: r1, r2, K1, K2, alpha1, alpha2
+    freq1_lv6, freq2_lv6 = LV6_model(t_example, xinit_example, 0.5, 0.3, 100, 100, 2.0, 0.5)
+    freq1_lv4, freq2_lv4 = LV4_model(t_example, xinit_example, 0.5, 0.3, 100, 100)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+    ax1.plot(t_example, freq1_lv6, color=green, label='Green')
+    ax1.plot(t_example, freq2_lv6, color=red, label='Red')
+    ax1.set_title('LV6 (α1=2, α2=0.5)')
+    ax1.set_xlabel('time')
+    ax1.set_ylabel('frequency')
+    ax1.legend()
+
+    ax2.plot(t_example, freq1_lv4, color=green, label='Green')
+    ax2.plot(t_example, freq2_lv4, color=red, label='Red')
+    ax2.set_title('LV4 (α1=α2=1)')
+    ax2.set_xlabel('time')
+    ax2.set_ylabel('frequency')
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.show()
     return
 
 
@@ -632,32 +674,88 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_model, LV6_model, df, partial):
+def _(LV4_model, LV6_model, df, np, partial):
     X1_freq = df.loc[df['strain'] == 'Green', 'frequency'].values ###
     X2_freq = df.loc[df['strain'] == 'Red', 'frequency'].values ###
     xinit = df.loc[df['time'] == 0, 'frequency'].values
     times = df['time'].unique()
 
     def loss(params, model): ###
-        # your code here
-        return
+        freq1, freq2 = model(times, xinit, *params)
+        return np.sum((freq1 - X1_freq)**2)
 
     loss_LV4 = partial(loss, model=LV4_model) ###
     loss_LV6 = partial(loss, model=LV6_model) ###
-    return
+    return X1_freq, X2_freq, loss_LV4, loss_LV6, times, xinit
 
 
 @app.cell
 def _():
+    return
+
+
+@app.cell
+def _(loss_LV4, loss_LV6, scipy):
     # your code here — minimize loss_LV4 and loss_LV6, print fitted parameters
-    result_LV4 = None
-    result_LV6 = None
-    return
+    x0_LV4 = [0.5, 0.5, 100, 100]           # r1, r2, K1, K2
+    x0_LV6 = [0.5, 0.5, 100, 100, 1.0, 1.0] # r1, r2, K1, K2, alpha1, alpha2
+
+    result_LV4 = scipy.optimize.minimize(loss_LV4, x0_LV4)
+    result_LV6 = scipy.optimize.minimize(loss_LV6, x0_LV6)
+
+    print('LV4 params (r1, r2, K1, K2):', result_LV4.x)
+    print('LV4 NLL:', result_LV4.fun)
+    print()
+    print('LV6 params (r1, r2, K1, K2, alpha1, alpha2):', result_LV6.x)
+    print('LV6 NLL:', result_LV6.fun)
+
+    return result_LV4, result_LV6
 
 
 @app.cell
-def _():
+def _(
+    LV4_model,
+    LV6_model,
+    X1_freq,
+    X2_freq,
+    green,
+    np,
+    plt,
+    red,
+    result_LV4,
+    result_LV6,
+    times,
+    xinit,
+):
     # your code here — plot data and fitted curves for LV4 and LV6
+    _fig, (_ax1, _ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+    t_plot = np.linspace(times[0], times[-1], 500)
+
+    # LV4
+    _freq1_lv4, _freq2_lv4 = LV4_model(t_plot, xinit, *result_LV4.x)
+    _ax1.scatter(times, X1_freq, color=green, label='Green data')
+    _ax1.scatter(times, X2_freq, color=red, label='Red data')
+    _ax1.plot(t_plot, _freq1_lv4, color=green, label='Green fit')
+    _ax1.plot(t_plot, _freq2_lv4, color=red, label='Red fit')
+    _ax1.set_title('LV4 fit')
+    _ax1.set_xlabel('time (hours)')
+    _ax1.set_ylabel('frequency')
+    _ax1.legend()
+
+    # LV6
+    _freq1_lv6, _freq2_lv6 = LV6_model(t_plot, xinit, *result_LV6.x)
+    _ax2.scatter(times, X1_freq, color=green, label='Green data')
+    _ax2.scatter(times, X2_freq, color=red, label='Red data')
+    _ax2.plot(t_plot, _freq1_lv6, color=green, label='Green fit')
+    _ax2.plot(t_plot, _freq2_lv6, color=red, label='Red fit')
+    _ax2.set_title('LV6 fit')
+    _ax2.set_xlabel('time (hours)')
+    _ax2.set_ylabel('frequency')
+    _ax2.legend()
+
+    plt.tight_layout()
+    plt.show()
     return
 
 
@@ -676,8 +774,24 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # your code here — compute F-statistic and p-value, print conclusion
+def _(result_LV4, result_LV6, scipy, times):
+    # your code here — compute F-statistic and p-value, print conclusion'
+    n = len(times)       
+    p_LV4 = 4              
+    p_LV6 = 6              
+
+    RSS_LV4 = result_LV4.fun
+    RSS_LV6 = result_LV6.fun
+
+    F = ((RSS_LV4 - RSS_LV6) / (p_LV6 - p_LV4)) / (RSS_LV6 / (n - p_LV6))
+    pvalue = scipy.stats.f.sf(F, p_LV6 - p_LV4, n - p_LV6)
+
+    print(f'F = {F:.3f}')
+    print(f'p-value = {pvalue:.3g}')
+    if pvalue < 0.05:
+        print('Conclusion: reject LV4 in favor of LV6 (p < 0.05)')
+    else:
+        print('Conclusion: cannot reject LV4, simpler model is sufficient (p >= 0.05)')
     return
 
 
