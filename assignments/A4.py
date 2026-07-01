@@ -188,7 +188,6 @@ def _(data_clean):
     mammal_df=data_clean.loc[data_clean['Class'] == 'Mammalia']
     amphib_df=data_clean.loc[data_clean['Class'] == 'Amphibia']
     reptile_df=data_clean.loc[data_clean['Class'] == 'Reptilia']
-
     return
 
 
@@ -196,7 +195,6 @@ def _(data_clean):
 def _(data_clean, sns):
     # your code here
     sns.histplot(data=data_clean, x='Temperature (C)', hue='Class', stat="density", common_norm=False)
-
     return
 
 
@@ -371,11 +369,11 @@ def _(X1, X2, Xbar, pm):
         mu2 = pm.Normal('mu2', mu=Xbar, sigma=50)
         sigma1 = pm.Exponential('sigma1', lam=1/10)
         sigma2 = pm.Exponential('sigma2', lam=1/10)
-    
+
         # Likelihood
         obs1 = pm.Normal('obs1', mu=mu1, sigma=sigma1, observed=X1)
         obs2 = pm.Normal('obs2', mu=mu2, sigma=sigma2, observed=X2)
-    
+
         # Sample
         idata = pm.sample()
     return (idata,)
@@ -594,7 +592,6 @@ def _(LV4_ode, LV6_ode, partial, solve_ivp):
 
     LV4_model = partial(LVmodel, LV4_ode) ###
     LV6_model = partial(LVmodel, LV6_ode) ###
-
     return LV4_model, LV6_model
 
 
@@ -700,15 +697,17 @@ def _(loss_LV4, loss_LV6, scipy):
     x0_LV4 = [0.5, 0.5, 100, 100]           # r1, r2, K1, K2
     x0_LV6 = [0.5, 0.5, 100, 100, 1.0, 1.0] # r1, r2, K1, K2, alpha1, alpha2
 
-    result_LV4 = scipy.optimize.minimize(loss_LV4, x0_LV4)
-    result_LV6 = scipy.optimize.minimize(loss_LV6, x0_LV6)
+    bounds_LV4 = [(1e-5, None), (1e-5, None), (1e-5, None), (1e-5, None)]
+    bounds_LV6 = [(1e-5, None), (1e-5, None), (1e-5, None), (1e-5, None), (1e-5, None), (1e-5, None)]
+
+    result_LV4 = scipy.optimize.minimize(loss_LV4, x0_LV4, bounds=bounds_LV4)
+    result_LV6 = scipy.optimize.minimize(loss_LV6, x0_LV6, bounds=bounds_LV6)
 
     print('LV4 params (r1, r2, K1, K2):', result_LV4.x)
     print('LV4 NLL:', result_LV4.fun)
     print()
     print('LV6 params (r1, r2, K1, K2, alpha1, alpha2):', result_LV6.x)
     print('LV6 NLL:', result_LV6.fun)
-
     return result_LV4, result_LV6
 
 
