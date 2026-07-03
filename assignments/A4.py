@@ -192,9 +192,19 @@ def _(data_clean):
 
 
 @app.cell
+def _(data_clean, np):
+    data_clean["Group"] = np.where(
+        data_clean["Class"] == "Mammalia",
+        "Mammals",
+        "Amphibians + Reptiles"
+    )
+    return
+
+
+@app.cell
 def _(data_clean, sns):
     # your code here
-    sns.histplot(data=data_clean, x='Temperature (C)', hue='Class', stat="density", common_norm=False)
+    sns.histplot(data=data_clean, x='Temperature (C)', hue='Group', stat="density", common_norm=False)
     return
 
 
