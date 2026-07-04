@@ -19,6 +19,7 @@ def _():
     from scipy.integrate import solve_ivp
     import scipy.optimize
     import scipy.stats
+
     return (
         datetime,
         mo,
@@ -39,7 +40,7 @@ def _():
 def _(sns):
     sns.set_palette('Set1')
     red, blue, green = sns.color_palette('Set1', 3) ###
-    return blue, green, red
+    return
 
 
 @app.cell(hide_code=True)
@@ -91,17 +92,18 @@ def _(mo):
 def _(os, urllib):
     ###
     url = 'http://genomics.senescence.info/species/dataset.zip'
-    fname = '../data/anage_dataset.zip'
-    if not os.path.exists(fname):
-        urllib.request.urlretrieve(url, fname)
-    print("Data file exists:", os.path.exists(fname))
-    return (fname,)
+    fname = '/data/anage_dataset.zip'
+    full_fname=r"C:\Users\Admin\source\repos\ModelsPopBiol\data\anage_dataset.zip"
+    if not os.path.exists(full_fname):
+        urllib.request.urlretrieve(url, full_fname)
+    print("Data file exists:", os.path.exists(full_fname))
+    return (full_fname,)
 
 
 @app.cell
-def _(fname, pd, zipfile):
+def _(full_fname, pd, zipfile):
     ###
-    with zipfile.ZipFile(fname) as _z:
+    with zipfile.ZipFile(full_fname) as _z:
         _f = _z.open('anage_data.txt')
         data_raw = pd.read_table(_f)
     return (data_raw,)
@@ -119,7 +121,7 @@ def _(mo):
 
 @app.cell
 def _(data_raw):
-    data = data_raw  # your code here — keep only the rows where Class == 'Mammalia'
+    data = data_raw.iloc[data_raw['Class'] == 'Mammalia']  # your code here — keep only the rows where Class == 'Mammalia'
     data.head() ###
     return (data,)
 
@@ -140,14 +142,20 @@ def _(mo):
 @app.cell
 def _(data):
     # your code here — extract M (body mass) and Y (metabolic rate), drop NaNs
-    M = None
-    Y = None
+    MY = data.loc[:, ['Body mass (g)', 'Metabolic rate (W)']]
+    my = MY.dropna()
+    M = my.loc[:, 'Body mass (g)'].reset_index(drop=True)
+    Y = my.loc[:, 'Metabolic rate (W)'].reset_index(drop=True)
     return M, Y
 
 
 @app.cell
 def _(M, Y, plt):
     # your code here — log-log plot of the data
+    plt.figure(figsize=(6, 4))
+    plt.loglog(M, Y, 'o')
+    plt.xlabel('Body mass (g)')
+    plt.ylabel('Metabolic rate (W)')
     return
 
 
@@ -170,24 +178,38 @@ def _(mo):
 
 
 @app.cell
-def _(M, Y, scipy):
+def _(M, Y, np, scipy):
     # your code here — compute logM, logY and the MLE estimate (logY0 and b)
-    logM = None
-    logY = None
-    logY0 = None
-    b = None
+    logM = np.log(M)
+    logY = np.log(Y)
+    result = scipy.stats.linregress(logM, logY)
+
+    logY0 = result.slope
+    b = result.intercept
+
+    print(f"logY0 = {logY0:.4f}")
+    print(f"b = {b:.4f}")
     return b, logM, logY, logY0
 
 
 @app.cell
-def _(b, logM, logY, logY0, plt, red):
+def _(M, Y, b, logY0, np, plt):
     # your code here — plot the data and the MLE regression line
+    plt.figure(figsize=(6, 4))
+    plt.loglog(M, Y, 'o')
+    plt.xlabel('Body mass (g)')
+    plt.ylabel('Metabolic rate (W)')
+    plt.loglog(M, np.exp(b) * M ** logY0, 'k--', label='MLE regression line')
+    plt.legend()
+    plt.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""The next step is to **perform Bayesian inference**. You can use PyMC directly or through Bambi.""")
+    mo.md(r"""
+    The next step is to **perform Bayesian inference**. You can use PyMC directly or through Bambi.
+    """)
     return
 
 
@@ -207,34 +229,96 @@ def _():
 @app.cell
 def _(bmb, logM, logY, pd):
     # your code here — build a dataframe and fit the Bayesian model; store the result in idata
-    df_kleiber = None
-    idata = None
-    return (idata,)
+
+    df_kleiber = pd.DataFrame({
+        "logM": logM,
+        "logY": logY,
+    })
+    model_k = bmb.Model("logY ~ logM", data=df_kleiber)
+
+    idata = model_k.fit()
+    return idata, model_k
 
 
 @app.cell
-def _(az, idata, plt):
+def _(az, idata):
     # your code here — trace plot
+    az.plot_trace(idata)
     return
 
 
 @app.cell
 def _(az, idata):
     # your code here — print/show the posterior summary; store it in isummary
-    isummary = None
+    isummary = az.summary(idata)
     isummary
-    return (isummary,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""**Plot MAP and posterior predictions** compared to the real data.""")
     return
 
 
 @app.cell
-def _(az, idata, isummary, logM, logY, plt, red):
-    # your code here — plot data, MAP prediction, and posterior predictive HDI
+def _(idata):
+    list(idata.posterior.data_vars)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    **Plot MAP and posterior predictions** compared to the real data.
+    """)
+    return
+
+
+@app.cell
+def _(M, Y, az, idata, model_k, np, plt):
+    # Compute posterior mean predictions
+    model_k.predict(idata, kind="mean", inplace=True)
+
+    # Posterior mean of the regression line
+    mu = idata.posterior["mu"].mean(dim=("chain", "draw")).values
+
+    # 94% HDI of the posterior mean
+    hdi = az.hdi(idata.posterior["mu"])
+
+    # Compatible with different ArviZ versions
+    if "hdi" in hdi.dims:
+        lower = hdi.sel(hdi="lower").values
+        upper = hdi.sel(hdi="higher").values
+    else:
+        lower = hdi.isel(ci_bound=0).values
+        upper = hdi.isel(ci_bound=1).values
+
+    # Sort by body mass so the line is smooth
+    idx = np.argsort(M)
+
+    plt.figure(figsize=(7,5))
+
+    # Data
+    plt.loglog(M, Y, "o", alpha=0.5, label="Data")
+
+    # Posterior mean prediction
+    plt.loglog(
+        M.iloc[idx],
+        np.exp(mu[idx]),
+        color="C1",
+        lw=2,
+        label="Posterior mean"
+    )
+
+    # 94% HDI
+    plt.fill_between(
+        M.iloc[idx],
+        np.exp(lower[idx]),
+        np.exp(upper[idx]),
+        color="C1",
+        alpha=0.3,
+        label="94% HDI"
+    )
+
+    plt.xlabel("Body mass (g)")
+    plt.ylabel("Metabolic rate (W)")
+    plt.legend()
+    plt.show()
     return
 
 
@@ -250,14 +334,36 @@ def _(mo):
 
 
 @app.cell
-def _(az, idata, plt, red):
-    # your code here — posterior of the slope with vertical lines at 3/4 and 2/3
+def _(az):
+    print(az.__version__)
+    return
+
+
+@app.cell
+def _(idata, plt):
+    b_samples = idata.posterior["logM"].values.flatten()
+
+    plt.figure(figsize=(6,4))
+
+    plt.hist(b_samples, bins=40, density=True, alpha=0.7, label="Posterior")
+
+    plt.axvline(2/3, color="blue", linestyle="--", linewidth=2, label=r"$b=2/3$")
+    plt.axvline(3/4, color="red", linestyle="--", linewidth=2, label=r"$b=3/4$")
+
+    plt.xlabel("Exponent $b$")
+    plt.ylabel("Density")
+    plt.title("Posterior distribution of Kleiber exponent")
+    plt.legend()
+
+    plt.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# Ex 2: Fit Lotka-Volterra competition models to experimental data""")
+    mo.md(r"""
+    # Ex 2: Fit Lotka-Volterra competition models to experimental data
+    """)
     return
 
 
@@ -276,7 +382,7 @@ def _(mo):
 @app.cell
 def _(datetime, pd):
     ###
-    df = pd.read_csv('../data/flow_df_2015-11-18.csv')
+    df = pd.read_csv(r"C:\Users\Admin\source\repos\ModelsPopBiol\data\flow_df_2015-11-18.csv")
     df = df[['Strain', 'date', 'hour', 'freq_mean']]
     df = df.rename(columns=dict(Strain='strain', freq_mean='frequency'))
     # parse date and time, see http://strftime.org
@@ -309,8 +415,28 @@ def _(mo):
 
 
 @app.cell
-def _(df, green, plt, red):
+def _(df, plt):
     # your code here
+    plt.figure(figsize=(8,5))
+
+    colors = {"Green": "green", "Red": "red"}
+
+    for strain, group in df.groupby("strain"):
+        plt.plot(
+            group["time"],
+            group["frequency"],
+            "o-",
+            label=strain,
+            color=colors[strain]
+        )
+
+    plt.xlabel("Time (hours)")
+    plt.ylabel("Frequency")
+    plt.title("Competition between Green and Red strains")
+    plt.ylim(0, 1)
+    plt.legend()
+
+    plt.show()
     return
 
 
@@ -364,14 +490,25 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(np):
     def LV6_ode(t, x, *params): ###
-        # your code here
-        return
+        r1, r2, K1, K2, alpha1, alpha2 = params
+        x1, x2 = x
 
+        dx1 = r1 * x1 * (1 - (x1 + alpha2 * x2) / K1)
+        dx2 = r2 * x2 * (1 - (alpha1 * x1 + x2) / K2)
+
+        return np.array([dx1, dx2])
+    
     def LV4_ode(t, x, *params): ###
-        # your code here
-        return
+        r1, r2, K1, K2 = params
+        x1, x2 = x
+
+        dx1 = r1 * x1 * (1 - (x1 + x2) / K1)
+        dx2 = r2 * x2 * (1 - (x1 + x2) / K2)
+
+        return np.array([dx1, dx2])
+
     return LV4_ode, LV6_ode
 
 
@@ -385,10 +522,22 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_ode, LV6_ode, partial):
+def _(LV4_ode, LV6_ode, np, partial, solve_ivp):
     def model(ode, t, xinit, *params): ###
-        # your code here
-        return
+        sol = solve_ivp(
+            ode,
+            (t.min(), t.max()),
+            xinit,
+            args=params,
+            t_eval=t
+        )
+
+        x1 = sol.y[0]
+        x2 = sol.y[1]
+
+        total = x1 + x2
+
+        return np.vstack((x1 / total, x2 / total))
 
     LV4_model = partial(model, LV4_ode) ###
     LV6_model = partial(model, LV6_ode) ###
@@ -405,9 +554,48 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_model, LV6_model, green, np, plt, red):
+def _(LV4_model, LV6_model, np, plt):
     # your code here
-    return
+    t = np.linspace(0, 30, 300)
+    xinit = np.array([0.5, 0.5])
+
+    # LV4: α1 = α2 = 1
+    freq4 = LV4_model(
+        t,
+        xinit,
+        1.0,   # r1
+        0.8,   # r2
+        1.0,   # K1
+        1.0    # K2
+    )
+
+    # LV6: choose asymmetric competition
+    freq6 = LV6_model(
+        t,
+        xinit,
+        1.0,   # r1
+        0.8,   # r2
+        1.0,   # K1
+        1.0,   # K2
+        0.5,   # alpha1
+        2.0    # alpha2
+    )
+
+    plt.figure(figsize=(8,5))
+
+    plt.plot(t, freq4[0], label="LV4 strain 1", color="green")
+    plt.plot(t, freq4[1], label="LV4 strain 2", color="red")
+
+    plt.plot(t, freq6[0], "--", label="LV6 strain 1", color="green")
+    plt.plot(t, freq6[1], "--", label="LV6 strain 2", color="red")
+
+    plt.xlabel("Time (hours)")
+    plt.ylabel("Frequency")
+    plt.ylim(0, 1)
+    plt.legend()
+
+    plt.show()
+    return (xinit,)
 
 
 @app.cell(hide_code=True)
@@ -444,26 +632,48 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_model, LV6_model, df, partial):
-    X1 = df.loc[df['strain'] == 'Green', 'frequency'].values ###
-    X2 = df.loc[df['strain'] == 'Red', 'frequency'].values ###
-    xinit = df.loc[df['time'] == 0, 'frequency'].values
-    t = df['time'].unique()
+def _(LV4_model, LV6_model, df, np, partial):
+    X1_ = df.loc[df['strain'] == 'Green', 'frequency'].values ###
+    X2_ = df.loc[df['strain'] == 'Red', 'frequency'].values ###
+    xinit_ = df.loc[df['time'] == 0, 'frequency'].values
+    t_ = df['time'].unique()
 
     def loss(params, model): ###
-        # your code here
-        return
+        pred = model(t_, xinit_, *params)
+        return np.sum((X1_ - pred[0])**2 + (X2_ - pred[1])**2)
 
     loss_LV4 = partial(loss, model=LV4_model) ###
     loss_LV6 = partial(loss, model=LV6_model) ###
-    return X1, X2, loss_LV4, loss_LV6, t, xinit
+    return X1_, X2_, loss_LV4, loss_LV6, t_, xinit_
 
 
 @app.cell
 def _(loss_LV4, loss_LV6, scipy):
     # your code here — minimize loss_LV4 and loss_LV6, print fitted parameters
-    result_LV4 = None
-    result_LV6 = None
+    result_LV4 = scipy.optimize.minimize(
+        loss_LV4,
+        x0=[1.0, 1.0, 1.0, 1.0],   # r1, r2, K1, K2
+        bounds=[
+            (0, None),  # r1
+            (0, None),  # r2
+            (0, None),  # K1
+            (0, None),  # K2
+        ]
+    )
+    result_LV4
+    result_LV6 = scipy.optimize.minimize(
+        loss_LV6,
+        x0=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        bounds=[
+            (0, None),  # r1
+            (0, None),  # r2
+            (0, None),  # K1
+            (0, None),  # K2
+            (0, None),  # alpha1
+            (0, None),  # alpha2
+        ]
+    )
+    result_LV6
     return result_LV4, result_LV6
 
 
@@ -471,18 +681,46 @@ def _(loss_LV4, loss_LV6, scipy):
 def _(
     LV4_model,
     LV6_model,
-    X1,
-    X2,
-    green,
+    X1_,
+    X2_,
+    df,
     np,
     plt,
-    red,
     result_LV4,
     result_LV6,
-    t,
     xinit,
 ):
     # your code here — plot data and fitted curves for LV4 and LV6
+
+    t_data = df["time"].unique()
+
+    # Dense time grid for smooth fitted curves
+    t_plot = np.linspace(t_data.min(), t_data.max(), 300)
+
+    # Model predictions
+    fit_LV4 = LV4_model(t_plot, xinit, *result_LV4.x)
+    fit_LV6 = LV6_model(t_plot, xinit, *result_LV6.x)
+
+    plt.figure(figsize=(8,5))
+
+    # Observed data
+    plt.plot(t_data, X1_, "go", label="Green data")
+    plt.plot(t_data, X2_, "ro", label="Red data")
+
+    # LV4 fit
+    plt.plot(t_plot, fit_LV4[0], "g-", lw=2, label="LV4 Green")
+    plt.plot(t_plot, fit_LV4[1], "r-", lw=2, label="LV4 Red")
+
+    # LV6 fit
+    plt.plot(t_plot, fit_LV6[0], "g--", lw=2, label="LV6 Green")
+    plt.plot(t_plot, fit_LV6[1], "r--", lw=2, label="LV6 Red")
+
+    plt.xlabel("Time (hours)")
+    plt.ylabel("Frequency")
+    plt.ylim(0, 1)
+    plt.legend()
+
+    plt.show()
     return
 
 
@@ -500,75 +738,182 @@ def _(mo):
 
 
 @app.cell
-def _(LV4_model, LV6_model, t, xinit):
+def _(LV4_model, LV6_model, t_, xinit_):
     import pytensor.tensor as pt
     from pytensor.compile.ops import as_op
 
     @as_op(itypes=[pt.dvector], otypes=[pt.dmatrix])
     def LV4_model_op(θ):
-        return LV4_model(t, xinit, *θ)
+        return LV4_model(t_, xinit_, *θ)
 
     @as_op(itypes=[pt.dvector], otypes=[pt.dmatrix])
     def LV6_model_op(θ):
-        return LV6_model(t, xinit, *θ)
+        return LV6_model(t_, xinit_, *θ)
+
     return LV4_model_op, LV6_model_op
 
 
 @app.cell
-def _(LV4_model_op, X1, X2, pm, result_LV4):
+def _(result_LV4):
+    result_LV4.x[0]
+    return
+
+
+@app.cell
+def _(LV4_model_op, X1_, pm, result_LV4):
+    # with pm.Model() as LV4_model_pm: ###
+    #     # your code here — priors for r1, r2, K1, K2 and σ, then the likelihood
+    #     # use LV4_model_op(pm.math.stack([...])) for the ODE solution
+    #     pass
     with pm.Model() as LV4_model_pm: ###
-        # your code here — priors for r1, r2, K1, K2 and σ, then the likelihood
-        # use LV4_model_op(pm.math.stack([...])) for the ODE solution
-        pass
+        r1 = pm.TruncatedNormal("r1", mu=result_LV4.x[0], sigma=1.0, lower=0)
+        r2 = pm.TruncatedNormal("r2", mu=result_LV4.x[1], sigma=1.0, lower=0)
+        K1 = pm.TruncatedNormal("K1", mu=result_LV4.x[2], sigma=1.0, lower=0)
+        K2 = pm.TruncatedNormal("K2", mu=result_LV4.x[3], sigma=1.0, lower=0)
+        σ = pm.HalfNormal("σ", sigma=0.1)
+
+        θ = pm.math.stack([r1, r2, K1, K2])
+        μ = LV4_model_op(θ)
+
+        pm.Normal("X1_obs", mu=μ[0], sigma=σ, observed=X1_)
     return (LV4_model_pm,)
 
 
 @app.cell
-def _(LV4_model_pm, az, pm):
+def _(LV4_model_pm, az, pm, result_LV4):
     # your code here — sample the LV4 model; store the result in idata_LV4
-    idata_LV4 = None
+    with LV4_model_pm:
+        idata_LV4 = pm.sample(
+            draws=3000,
+            tune=2000,
+            chains=4,
+            cores=1,
+            step=pm.Metropolis(),
+            initvals={
+                "r1": result_LV4.x[0],
+                "r2": result_LV4.x[1],
+                "K1": result_LV4.x[2],
+                "K2": result_LV4.x[3],
+                "σ": 0.02,
+            },
+            random_seed=42,
+            return_inferencedata=True,
+        )
     az.summary(idata_LV4)
     return (idata_LV4,)
 
 
 @app.cell
+def _(az, idata_LV4):
+    az.summary(idata_LV4)
+    return
+
+
+@app.cell
+def _(result_LV4):
+    print(result_LV4.x)
+    return
+
+
+@app.cell
 def _(az, idata_LV4, plt):
     # your code here — trace plot for LV4
+    az.plot_trace(idata_LV4)
+    plt.tight_layout()
+    plt.show()
     return
 
 
 @app.cell
 def _(az, idata_LV4):
     # your code here — posterior summary for LV4
+    az.summary(idata_LV4)
     return
 
 
 @app.cell
-def _(LV6_model_op, X1, X2, pm, result_LV6):
+def _(LV6_model_op, X1_, pm, result_LV6):
+    # with pm.Model() as LV6_model_pm: ###
+    #     # your code here — priors for r1, r2, K1, K2, α1, α2 and σ, then the likelihood
+    #     # use LV6_model_op(pm.math.stack([...])) for the ODE solution
+    #     pass
+    r1_mle, r2_mle, K1_mle, K2_mle, α1_mle, α2_mle = result_LV6.x
+
     with pm.Model() as LV6_model_pm: ###
-        # your code here — priors for r1, r2, K1, K2, α1, α2 and σ, then the likelihood
-        # use LV6_model_op(pm.math.stack([...])) for the ODE solution
-        pass
-    return (LV6_model_pm,)
+
+        r1_LV6 = pm.TruncatedNormal("r1", mu=r1_mle, sigma=1, lower=0)
+        r2_LV6 = pm.TruncatedNormal("r2", mu=r2_mle, sigma=1, lower=0)
+
+        K1_LV6 = pm.TruncatedNormal("K1", mu=K1_mle, sigma=1, lower=0)
+        K2_LV6 = pm.TruncatedNormal("K2", mu=K2_mle, sigma=1, lower=0)
+
+        α1_LV6 = pm.TruncatedNormal("α1", mu=α1_mle, sigma=0.5, lower=0)
+        α2_LV6 = pm.TruncatedNormal("α2", mu=α2_mle, sigma=0.5, lower=0)
+
+        σ_LV6 = pm.HalfNormal("σ", sigma=0.1)
+
+        θ_LV6 = pm.math.stack([
+            r1_LV6,
+            r2_LV6,
+            K1_LV6,
+            K2_LV6,
+            α1_LV6,
+            α2_LV6,
+        ])
+
+        μ_LV6 = LV6_model_op(θ_LV6)
+
+        pm.Normal(
+            "X1_obs",
+            mu=μ_LV6[0],
+            sigma=σ_LV6,
+            observed=X1_,
+        )
+    return K1_mle, K2_mle, LV6_model_pm, r1_mle, r2_mle, α1_mle, α2_mle
 
 
 @app.cell
-def _(LV6_model_pm, az, pm):
+def _(K1_mle, K2_mle, LV6_model_pm, az, pm, r1_mle, r2_mle, α1_mle, α2_mle):
     # your code here — sample the LV6 model; store the result in idata_LV6
-    idata_LV6 = None
+    with LV6_model_pm:
+
+        idata_LV6 = pm.sample(
+            draws=3000,
+            tune=2000,
+            chains=4,
+            cores=1,
+            step=pm.Metropolis(),
+            initvals={
+                "r1": r1_mle,
+                "r2": r2_mle,
+                "K1": K1_mle,
+                "K2": K2_mle,
+                "α1": α1_mle,
+                "α2": α2_mle,
+                "σ": 0.02,
+            },
+            random_seed=42,
+            return_inferencedata=True,
+        )
     az.summary(idata_LV6)
+
     return (idata_LV6,)
 
 
 @app.cell
 def _(az, idata_LV6, plt):
     # your code here — trace plot for LV6
+    az.plot_trace(idata_LV6)
+    plt.tight_layout()
+    plt.show()
     return
 
 
 @app.cell
 def _(az, idata_LV6):
     # your code here — posterior summary for LV6
+    summary_LV6 = az.summary(idata_LV6)
+    summary_LV6
     return
 
 
@@ -625,7 +970,13 @@ def _(mo):
 @app.cell
 def _(az, idata_LV4_ll, idata_LV6_ll):
     # your code here — compare LV4 and LV6 with az.compare; store the result in df_compare
-    df_compare = None
+    df_compare = az.compare(
+        {
+            "LV4": idata_LV4_ll,
+            "LV6": idata_LV6_ll,
+        }
+    )
+
     df_compare
     return (df_compare,)
 
@@ -633,12 +984,17 @@ def _(az, idata_LV4_ll, idata_LV6_ll):
 @app.cell
 def _(az, df_compare, plt):
     # your code here — plot the model comparison
+    az.plot_compare(df_compare)
+    plt.tight_layout()
+    plt.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""__end of assignment__""")
+    mo.md(r"""
+    __end of assignment__
+    """)
     return
 
 
