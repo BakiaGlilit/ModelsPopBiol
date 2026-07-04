@@ -595,7 +595,7 @@ def _(LV4_model, LV6_model, np, plt):
     plt.legend()
 
     plt.show()
-    return (xinit,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -688,7 +688,7 @@ def _(
     plt,
     result_LV4,
     result_LV6,
-    xinit,
+    xinit_,
 ):
     # your code here — plot data and fitted curves for LV4 and LV6
 
@@ -698,8 +698,8 @@ def _(
     t_plot = np.linspace(t_data.min(), t_data.max(), 300)
 
     # Model predictions
-    fit_LV4 = LV4_model(t_plot, xinit, *result_LV4.x)
-    fit_LV6 = LV6_model(t_plot, xinit, *result_LV6.x)
+    fit_LV4 = LV4_model(t_plot, xinit_, *result_LV4.x)
+    fit_LV6 = LV6_model(t_plot, xinit_, *result_LV6.x)
 
     plt.figure(figsize=(8,5))
 
@@ -754,12 +754,6 @@ def _(LV4_model, LV6_model, t_, xinit_):
 
 
 @app.cell
-def _(result_LV4):
-    result_LV4.x[0]
-    return
-
-
-@app.cell
 def _(LV4_model_op, X1_, pm, result_LV4):
     # with pm.Model() as LV4_model_pm: ###
     #     # your code here — priors for r1, r2, K1, K2 and σ, then the likelihood
@@ -780,7 +774,7 @@ def _(LV4_model_op, X1_, pm, result_LV4):
 
 
 @app.cell
-def _(LV4_model_pm, az, pm, result_LV4):
+def _(LV4_model_pm, pm, result_LV4):
     # your code here — sample the LV4 model; store the result in idata_LV4
     with LV4_model_pm:
         idata_LV4 = pm.sample(
@@ -799,20 +793,7 @@ def _(LV4_model_pm, az, pm, result_LV4):
             random_seed=42,
             return_inferencedata=True,
         )
-    az.summary(idata_LV4)
     return (idata_LV4,)
-
-
-@app.cell
-def _(az, idata_LV4):
-    az.summary(idata_LV4)
-    return
-
-
-@app.cell
-def _(result_LV4):
-    print(result_LV4.x)
-    return
 
 
 @app.cell
